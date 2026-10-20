@@ -29,7 +29,17 @@ for _d in ("/usr/share/fonts/opentype/noto", "/usr/share/fonts/truetype/noto"):
         for _f in sorted(os.listdir(_d)):
             if "CJK" in _f and "Regular" in _f:
                 font_manager.fontManager.addfont(os.path.join(_d, _f))
-plt.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "Noto Sans CJK JP", "DejaVu Sans"]
+plt.rcParams["font.sans-serif"] = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK JP",
+    "PingFang SC",
+    "PingFang HK",
+    "Hiragino Sans GB",
+    "Heiti TC",
+    "STHeiti",
+    "Arial Unicode MS",
+    "DejaVu Sans",
+]
 plt.rcParams["axes.unicode_minus"] = False
 plt.rcParams["svg.hashsalt"] = "deepinfer-reader"
 

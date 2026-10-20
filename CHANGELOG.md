@@ -1,5 +1,17 @@
 # 更新日志
 
+## v0.2.0（2026-10-20）
+
+- **全书重写与知识勘误（第 0–16 章、附录）**：
+  - 按“痛点直觉 → 小数字图解推演 → 真实源码逐行印证 → 实验与踩坑复盘”重构全部 18 个章节，提升可读性与叙事连贯性；
+  - 完整解析 `DFlash`（DSpark）并行提特征 + 马尔可夫头（`markov_w1/w2`）+ `ConfidenceHead` 的三步投机采样架构（`mtp/dflash.py`）；
+  - 彻底厘清主模型 SWA Ring 取 `128 + 6 = 134`（跨 128 边界状态快照 `do_copy_state`、Prefill 历史窗口加载与 YoCo 尾部保留）与压缩状态 Ring 取 `ratio + 5`（单步前向与回退下界 $W + k - 1$）的源码依据；
+  - 补全 `cache.num_tokens == get_len() - 1` 核心不变量、ZOS 双变量在途计数（`total_inflight_tokens` / `last_inflight_tokens`）与 `compute_seqlens_k_zos` 修正公式、YoCo 双段截断以及 `_append_slot` 草稿被拒后的尾块缩容回收（同步补入 `minidi/scheduler.py` 与第 64 个单元测试）。
+- **重绘全部 Mermaid 架构图（28 张 Mermaid + 7 张实跑数据图，共 35 张）**：
+  - 消除原先高达 3341px（3x 下 10023px）或宽高比 18.65 的极端长图/宽图，全部重排为二维网格布局（1x 宽高比均在 `0.79–2.19` 之间）。
+- **GitHub Pages 交互式阅读器升级（`build.py`、`assets/style.css`、`assets/print.css`）**：
+  - 新增桌面端固定左侧目录、章节实时搜索过滤、“分章阅读 / 全文连读”切换、上一章/下一章底部导航、浅色/护眼/深色三套主题切换、阅读进度条与图表点击放大灯箱（Lightbox）。
+
 ## v0.1.1（2026-10-20）
 
 - 作者署名改为 Hawk Wu（书籍元数据、EPUB/PDF 扉页、网页、README、LICENSE）。

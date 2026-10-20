@@ -91,3 +91,22 @@ def test_check_stop_eos_and_max_tokens():
     s.tokens.append(3)
     sch._check_stop(s, 3)
     assert s.status == Status.FINISHED_STOPPED
+
+
+def test_append_slot_frees_redundant_blocks_after_draft_rejection():
+    """对应 scheduler.hpp L821-L825：上一步因 draft 预留了第 2 块，draft 被拒且本步不再需要时自动归还。"""
+    bm = BlockManager(6)
+    sch = Scheduler(bm, max_num_seqs=8)
+    s = mk(0, 3, out=0, bs=4)
+    # 模拟上一步有 3 个 draft（3 + 3 = 6 token -> 2 块），但最后只接受了 0 个 draft（只多 1 个主 token，共 4 token -> 1 块）
+    s.block_table = bm.allocate(2)
+    s.tokens.append(9)                           # 长度 4，draft 清空后 get_num_blocks() == 1
+    s.num_cached = 3
+    s.status = Status.RUNNING
+    sch.running = [s]
+    sch.decode_step = 1
+    free_before = bm.num_free()
+    o = sch.schedule()
+    assert not o.prompt_run and len(s.block_table) == 1
+    assert bm.num_free() == free_before + 1
+

@@ -141,6 +141,9 @@ class Scheduler:
             if need <= self.bm.num_free():
                 if need > 0:
                     seq.block_table += self.bm.allocate(need)
+                elif need < 0:                     # 对应 _append_slot (L821-L825)：draft 被拒后回收多余尾块
+                    self.bm.free_blocks(seq.block_table[need:])
+                    del seq.block_table[need:]
                 out.scheduled.append(seq)
             else:
                 self._preempt(seq, out)

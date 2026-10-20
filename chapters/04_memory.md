@@ -1,103 +1,161 @@
-# 第 4 章　显存与 KV Cache：两套账本
+# 第 4 章　显存与 KV Cache：分页块池与定长状态池的两套账本
 
-DeepSeek-V4.1-Flash 的注意力不是标准多头注意力。从 `cache_engine.py` 的布局代码能看出，每层可能同时有：压缩后的 KV（compressed attention）、稀疏注意力的索引 KV（index attention）、滑动窗口 KV（SWA），以及压缩时需要的边界累加器（state）。DeepInfer 把这些东西分进**两套账本**：按 token 增长的放进分页块，按请求定长的放进 state 槽。
+在标准的 Transformer 推理引擎（如原版 vLLM）里，所有层的 KV Cache 都长得一模一样：序列每增长 1 个 token，所有层都往分页块（Paged Block）里追加 1 个位置的 K 和 V。
 
-## 4.1 先算出能有多少块
+但在 **DeepSeek-V4.1-Flash** 中，这种“一刀切”的分页方案行不通了。因为它的每一层可能同时包含四种截然不同的缓存对象：
 
-`Worker.profile_num_available_blocks`（`deepinfer/worker/base.py` L212–L268）的计算过程：
+1. **压缩注意力 KV（`ca_cache`）**：把连续若干个 token 门控压缩成一个潜在向量，随序列长度线性增长；
+2. **稀疏索引 KV（`ica_cache`）**：给稀疏注意力选择器（DeepSelect）打分用的超低比特索引，同样随序列长度线性增长；
+3. **滑动窗口注意力 KV（`swa_cache`）**：无论是主模型的 SWA 层还是 DFlash 草稿模型，都只看最近 $W = 128$ 个 token，跟序列总长是 500 还是 50,000 毫无关系；
+4. **压缩边界累加器（`ca_state` / `ica_state`）**：在相邻压缩窗口交界处暂存未凑齐一个压缩步长的残余状态，大小同样是固定的。
 
-```{.mermaid caption="图 4-1　KV 块数的推导（base.py L212–L268）"}
+如果把第 3、4 种“固定大小、循环覆写”的数据也硬塞进按全长分配的分页块表里，不仅会白白浪费海量显存，还会让块回收逻辑变得极其拧巴。因此，DeepInfer 的核心设计是**建立两套独立的显存账本**：
+
+- **账本一：`block_manager`（分页 KV 池）**——按 token 块动态增长，管理 `ca_cache` 和 `ica_cache`；
+- **账本二：`state_manager`（定长状态池）**——每条活跃请求独占 1 个定长槽位（`state_id`），以环形缓冲区（Ring Buffer）方式管理 `swa_cache` 与压缩状态。
+
+---
+
+## 4.1 启动探底：GPU 到底能切出多少个分页块？
+
+在分配这两本账之前，引擎先要在 `Worker.profile_num_available_blocks`（`deepinfer/worker/base.py` L212–L268）里摸清家底：
+
+```{.mermaid caption="图 4-1　可用 KV 分页块数的探测与计算流程（deepinfer/worker/base.py L212–L268）"}
 flowchart TB
-  A["empty_cache、reset_peak_memory_stats"] --> B["profile_run：用最大批次跑一次 forward"]
-  B --> C["peak = 峰值 torch 显存 + max(非 torch 显存, 0)"]
-  C --> D["可用 = 总显存 × gpu_memory_utilization − peak"]
-  D --> E["再减去 state cache：<br/>state_shape 字节数 × 2（store + copy 两份）"]
-  E --> F["num_gpu_blocks = 可用 // 每块字节数"]
-  F --> G["all_reduce(SUM) 全部 rank"]
-  G --> H["// world_size // 2 × 2"]
-```
-
-最后一步需要注意：代码是 `all_reduce(SUM)` 再整除 `world_size`（L265–L266），得到的是**各 rank 块数的平均值**（向下取到偶数），而 `LLMEngine._init_cache` 的 docstring 写的是“take the minimum number of blocks across all workers”（`llm_engine.py` L426–L427）。两者不一致，以代码为准。在同构 GPU、同样的模型切分下，各 rank 的结果应该很接近，所以平均和最小差别不大；但如果某个 rank 因为别的进程占了显存而偏小，平均值可能超过它的真实可用量。本书没有在 GPU 上验证过这种情况会不会 OOM，只陈述代码事实。
-
-`gpu_memory_utilization` 默认 0.9（`arg_utils.py` L34），离线示例用 0.85（`examples/offline_inference.py`）。`LLM` 的 docstring 里还有一句中文提醒：开 CUDA Graph 时如果遇到 `illegal memory access`，“可能是 cudagraph OOM 了，可以调低 gpu_memory_utilization 再试试”（`llm.py` L50–L51）。
-
-## 4.2 块有多大
-
-块大小不是参数，而是由模型决定：`ModelMetadata.resolved_tokens_per_block` 直接返回 `128`（`model_executor/model_metadata_utils.py` L134–L135）。`EngineArgs.tokens_per_block` 默认 `-1`，如果用户显式给了别的值，`create_engine_configs` 会断言两者相等（`arg_utils.py` L85–L86）。也就是说，**一个块代表 128 个原始 token**，但每层实际存的条目数要除以该层的压缩比：
-
-| 缓存 | 形状（`cache_engine.py` L206–L219 注释） | 每 token 字节 |
-| --- | --- | --- |
-| `ca_cache` 压缩注意力 KV | `[num_blocks, block_size // ratio, 1, bytes]` uint8 | MXFP8：528；FP4（per-16）：288 |
-| `ica_cache` 索引注意力 KV | `[num_blocks, block_size // ratio, 1, index_bytes]` uint8 | `index_head_dim/2 + index_head_dim/32`（FP4 + UE8M0 scale，L73–L80） |
-| `swa_cache` 滑动窗口 KV | `[num_state_seqs, swa_block_size, 1, 528]` uint8 | 528 |
-| `ca_state` / `ica_state` | `[num_state_seqs, ring_size, 2, dim]` fp32 | — |
-
-528 和 288 可以从格式定义算出来（`layers/tilelang_ops/cache_common.py` L109–L127）：
-
-- `V41_FORMAT`：512 个 e4m3 元素，每 32 个一个 ue8m0 scale，512 + 512/32 = **528** 字节；
-- `V41_FP4_FORMAT`：512 个 e2m1（4 bit）元素，每 16 个一个 e4m3 scale，256 + 32 = **288** 字节。
-
-官方 Q&A 的“低精度计算”一节对应：Main KV 用 per-16 的 e4m3 scale（“相比 NVFP4 无 global scale”），Indexer KV 用 per-32 的 ue8m0（MXFP4）。另外 `_kvcache_layout` 断言 `num_key_value_heads == 1`（L624），即所有头共享一份 KV，这是 MLA 类注意力的特征。
-
-## 4.3 为什么 SWA 不进分页块
-
-滑动窗口层每个请求只需要最近 `window` 个位置的 KV，和上下文多长无关。如果放进分页块，要么每个请求按全长分块（浪费），要么频繁释放窗口外的块（复杂）。DeepInfer 的选择是：**每个请求一个定长 state 槽**，SWA KV 写成环形缓冲区，位置 `p` 写到 `p % ring`。
-
-```{.mermaid caption="图 4-2　两套账本：分页块按 token 增长，state 槽每请求一个"}
-flowchart LR
-  subgraph BM["block_manager：num_gpu_blocks 个块（块 0 保留）"]
-    b1["块 7"] --- b2["块 3"] --- b3["块 12"] --- b4["..."]
+  subgraph Step1["第一阶段：实测最大批次前向的峰值显存"]
+    direction LR
+    P1["清空缓存并重置统计<br/>empty_cache + reset_peak"] --> P2["执行 profile_run()<br/>用最大批次跑一次假前向"]
+    P2 --> P3["记录前向峰值显存 peak：<br/>PyTorch 峰值 + 非 PyTorch 显存占用"]
   end
-  subgraph SM["state_manager：num_state_seqs 个槽"]
-    s1["槽 5：SWA ring（各层）+ 压缩 state"]
+
+  subgraph Step2["第二阶段：扣减定长 State 池并折算分页块数"]
+    direction LR
+    Q1["可支配总池 = 总显存 × gpu_memory_utilization − peak"] --> Q2["优先扣除定长 State 池：<br/>减去 state_cache 字节数 × 2（主池 + 拷贝缓冲）"]
+    Q2 --> Q3["单卡块数 = 剩余字节 // 单块字节数；<br/>跨卡 all_reduce(SUM) 取均值并向下对齐到偶数"]
   end
-  Seq["Sequence<br/>cache.block_table = [7, 3, 12, ...]<br/>cache.state_id = 5"] --> b1
-  Seq --> s1
+
+  Step1 --> Step2
 ```
 
-两套账本用的是**同一个 C++ 类** `BlockManager`：`state_manager = BlockManager(cache_config.num_state_seqs)`（`llm_engine.py` L266），只是一个“块”在这里代表一个请求的整个 state 槽。槽的数量是 `int(max_num_seqs * DEEPINFER_NUM_STATE_SLOTS_RATIO) + 1`，比例默认 1.2（`cache_engine.py` L201–L202，`environ.py` L162），多出来的 20% 给 fork 和异步调度中“旧请求还没释放、新请求已经要用”的重叠期。
+这里有两个值得留意的工程细节：
 
-ring 有多长？`get_inference_swa_block_size(window) = window + DEEPINFER_MAX_BACKTRACKING_TOKENS`（`cache_engine.py` L88–L93），而 `MAX_BACKTRACKING_TOKENS` 至少是 `nextn + 1`（`environ.py` L132）。多出来的部分是给投机解码的：一次 decode 会把主 token 和所有草稿 token 的 KV 都写进 ring，被拒绝的草稿要“回退”。官方 Q&A 给出 V4.1 的推理视角：`ring = 窗口 128 + 最大回退 6 = 134`。第 15 章会在 `minidi` 里推导这个余量的下界，并用测试验证余量不够时窗口会被覆盖。
+1. **定长 State 池优先扣除，且留双份（`× 2`）**：State 池的大小只取决于最大并发请求数 `num_state_seqs`，因此先把它的显存扣掉（乘 2 是因为除了主状态池 `state_cache`，还要留一份同尺寸的 `state_cache_to_copy` 供落盘拷贝使用，见 `base.py` L244–L249），剩下的显存再全部切成分页 KV 块。
+2. **多卡取平均并对齐偶数**：代码第 265–266 行通过 `all_reduce(SUM)` 除以 `world_size` 再 `// 2 * 2` 得到全组统一的块数（注：`llm_engine.py` L426 的注释写的是取最小值，但实际代码执行的是取均值并对齐偶数）。
 
-PE（prefill 引擎）为了能在 128 的整数倍处落盘，ring 更长：官方 Q&A 写的是 `396 = 134 + PREFILL_STORE_EXTRA_SIZE(128) + YOCO_PREFILL_KEEP_TOKENS(134)`，对应代码 `get_kvstore_swa_block_size`（`cache_engine.py` L101–L110）。开源版默认 `DEEPINFER_PREFILL_STORE_EXTRA_STATE` 关闭，所以离线推理用的是 134 那一档（具体窗口值取决于模型 config）。
+---
 
-## 4.4 state 槽的内部分区
+## 4.2 账本一：分页 KV 块有多大？每个 Token 占多少字节？
 
-`StateBlock` 的类注释（`cache_engine.py` L221–L241）给出了一个槽的布局：
+在 DeepInfer 中，一个分页块代表多少个原始 token 是由模型元数据锁定的：`ModelMetadata.resolved_tokens_per_block` 固定返回 **`128`**（`model_metadata_utils.py` L134–L135）。
 
-```text
-[stored region: SWA]  [dropped region: YOCO consumer SWA | compression state]
+也就是说，**逻辑上一个物理块对应 128 个原始 token**。但由于压缩注意力层每 `ratio` 个 token 才产出一个压缩 KV 条目，物理张量的第二维长度实际上是 `128 // ratio`。我们对照 `deepinfer/worker/cache_engine.py`（L206–L219）和 `layers/tilelang_ops/cache_common.py`（L109–L127），可以把两套池子的张量形状和字节账算得一清二楚：
+
+| 所属账本 | 缓存名称 | 物理张量形状（`cache_engine.py`） | 数值格式与每条目字节数 |
+| --- | --- | --- | --- |
+| **分页 KV 池**<br/>（`block_manager`） | `ca_cache`<br/>（压缩注意力 KV） | `[num_blocks, 128 // ratio, 1, bytes]` | **MXFP8**：512 个 `e4m3` + 16 个 `ue8m0` 缩放因子 = **528 B**<br/>**FP4 (per-16)**：512 个 `e2m1`(256B) + 32 个 `e4m3` 缩放因子 = **288 B** |
+| **分页 KV 池**<br/>（`block_manager`） | `ica_cache`<br/>（稀疏索引 KV） | `[num_blocks, 128 // ratio, 1, idx_bytes]` | **MXFP4**：`index_head_dim / 2` 字节数据 + `index_head_dim / 32` 字节 `ue8m0` 缩放因子 |
+| **定长 State 池**<br/>（`state_manager`） | `swa_cache`<br/>（滑动窗口 KV） | `[num_state_seqs, swa_block_size, 1, 528]` | **MXFP8**：每个窗口槽位固定 **528 B**，环形缓冲区长度 `swa_block_size = 134` |
+| **定长 State 池**<br/>（`state_manager`） | `ca_state` / `ica_state`<br/>（压缩边界状态） | `[num_state_seqs, ring_size, 2, dim]` | **FP32**：保存压缩窗口交界处的残余向量，环形长度 `ring_size = ratio + 5` |
+
+注意表中第三列那个醒目的 **`1`**：`_kvcache_layout`（L624）明确断言 `num_key_value_heads == 1`——这就是 DeepSeek 标志性的 **MLA（多头潜在注意力）** 架构：所有注意力头共享同一份压缩后的潜在 KV 向量，把 KV 显存占用压缩到了传统多头注意力的几十分之一！
+
+---
+
+## 4.3 账本二：为什么压缩 Ring 是 `W + 5`，而 SWA Ring 是 `128 + 6 = 134`？
+
+现在我们来看定长状态池（`state_manager`）。每条进入系统的请求都会分到一个独立的 `state_id`，同时指向自己的 SWA 环形缓冲区和压缩状态环形缓冲区：
+
+```{.mermaid caption="图 4-2　单条请求同时持有分页块表（block_table）与定长状态槽（state_id）"}
+flowchart TB
+  Seq["活跃请求 Sequence<br/>cache.block_table = [7, 3, 12] · cache.state_id = 5"]
+
+  subgraph Paged["账本一：block_manager（随序列长度动态追加块，块 0 保留）"]
+    direction LR
+    B7["物理块 7<br/>tokens 0..127"] --> B3["物理块 3<br/>tokens 128..255"] --> B12["物理块 12<br/>tokens 256.."]
+  end
+
+  subgraph State["账本二：state_manager（每请求独占 1 个定长槽，按下标取模循环覆写）"]
+    direction LR
+    S5A["槽 5 · Stored 区<br/>前 20 层 SWA Ring（134 槽 × 528 B）"] --- S5B["槽 5 · Dropped 区<br/>YoCo 后半段 SWA + 压缩状态 Ring（ratio + 5 槽）"]
+  end
+
+  Seq --> B7
+  Seq --> S5A
 ```
 
-- stored region：需要落盘、跨请求复用的 SWA 窗口；
-- dropped region：YoCo consumer 层的 SWA（恢复靠 prefill 重算）和压缩 state（压缩窗口边界与落盘粒度 128 对齐，不跨边界依赖），不落盘。
+这里有一个极其深刻、很多读者第一次看源码都会疑惑的问题：
 
-官方 Q&A 给了 V4.1 的数字：落盘的只有前 20 层，`state_size_to_disk = 20 层 × 134 token × 528 B = 1,415,040 B/seq`，约 1.35 MiB。开源版没有落盘系统，但布局保留了这个分区，所以 `do_copy_state` / `do_save_kvcache` 这些钩子位置都还在。
+> 既然滑动窗口大小是 $W = 128$，投机解码草稿数是 $\text{nextn} = 5$（即一步 decode 最多送入 $k = 1 + 5 = 6$ 个 token），为什么**压缩状态 Ring** 的长度是 $\text{ratio} + 5$，而 **SWA Ring** 的长度却是 $128 + 6 = 134$？那个相差的 **`1`** 到底是从哪儿来的？
 
-## 4.5 BlockManager：链表 + 引用计数
+我们先把源码里的两个公式摆出来（见 `deepinfer/environ.py` L132 与 `deepinfer/worker/cache_engine.py` L88–L133）：
 
-`csrc/engine/block_manager.hpp` 只有 242 行，核心是 `Blocks`（L27–L117）：
+1. 环境变量 `DEEPINFER_MAX_BACKTRACKING_TOKENS` 默认等于 `nextn + 1 = 6`（即单步 decode 送入模型的最大 token 数 $k = 1 + \text{nextn}$）。
+2. **压缩状态 Ring 大小**（`get_inference_compress_block_size`，`cache_engine.py` L131–L133 及 `compress.py` L98）：
+   $$\text{compress\_ring\_size} = \text{compress\_ratio} + \text{DEEPINFER\_MAX\_BACKTRACKING\_TOKENS} - 1 = \text{ratio} + 5$$
+3. **SWA Ring 大小**（`get_inference_swa_block_size`，`cache_engine.py` L88–L93）：
+   $$\text{swa\_block\_size} = \text{window\_size} + \text{DEEPINFER\_MAX\_BACKTRACKING\_TOKENS} = 128 + 6 = 134$$
 
-- **块 0 保留**：“gpu blocks 0 是不用的，所以这里 0 代表空”（L27）。构造时空闲链表从 1 到 n-1，链表的 `next==0` 表示到头。后面看到 `clone_blocks` 里的 `(block, 0)` 对，0 就是“不需要复制目标”的意思（`scheduler.hpp` L431–L434）。
-- **空闲块是 FIFO 链表**：`allocate` 从表头 `_pop_front`，`free` 在引用计数归零时 `_push_back` 到表尾。用 `prev/next` 下标实现双向链表，删除任意节点 O(1)。
-- **引用计数**：`pin_block` 给已分配的块 +1，fork 共享前缀时用；`free` 减到 0 才回到空闲链表。
-- **三态分配判断** `can_allocate_nolock`（L127–L135）：要的块数 `>= num_blocks` 返回 `NEVER`（因为块 0 不可用，最多只有 `num_blocks-1` 块），空闲够返回 `OK`，否则 `LATER`。调度器拿到 `LATER` 就停止本轮 prefill，拿到 `NEVER` 就把请求判为 `FINISHED_IGNORED`。
+为什么两边一个减了 1、一个没减 1？我们用小数字推演一下就彻底明白了：
 
-```{.mermaid caption="图 4-3　块的生命周期"}
-stateDiagram-v2
-  [*] --> Free: 构造（1..n-1）
-  Free --> Used: allocate（ref=1，从链表头取）
-  Used --> Used: pin_block（ref+1，fork 共享）
-  Used --> Used: free（ref-1，仍 >0）
-  Used --> Free: free（ref 归零，挂到链表尾）
+### 第一步：单步前向与投机回退的理论最小下界是 $W + k - 1 = W + \text{nextn}$
+假设窗口大小是 $W$，本步从位置 $L$ 开始一口气往环形缓冲区里写入 $k = 1 + \text{nextn} = 6$ 个新位置：$L, L+1, \dots, L+k-1$。
+- 在这一步内部，排在最前面的第 1 个 query（位置 $L$）需要回头看它前面最近的 $W - 1$ 个历史位置：$[L - (W - 1), \dots, L - 1]$。
+- 同时，万一本步验证后 5 个草稿全部被拒绝，下一步要退回到位置 $L+1$ 重新开始，那 $W - 1$ 个旧历史加上位置 $L$（共 $W$ 个有效位置）也绝不能被那 5 个废草稿覆盖！
+- 因此，在环形缓冲区里必须同时共存的位置总数是：
+  $$\underbrace{(W - 1)\text{ 个旧历史}}_{L-(W-1)\,\dots\,L-1} + \underbrace{k\text{ 个本步新写入位置}}_{L\,\dots\,L+k-1} = W + k - 1 = W + \text{nextn}$$
+- 这正是**压缩状态 Ring** 取 `compress_ratio + 5`（显式减 1）以及 **DFlash 草稿层 SWA** 取 `128 + 5 = 133`（`get_kv_index.py` L183）的原因！第 15 章我们会用 `minidi` 画出槽位覆盖图，直观展示少 1 个槽位就会发生历史覆盖。
+
+### 第二步：为什么主模型 SWA Ring 不减这 1，非要取 $128 + 6 = 134$？
+因为主模型的 SWA 环形缓冲区除了应付单步前向和投机回退，还要承担**按 128 边界异步快照落盘（KVCache Store）**与**预填充历史加载**三项额外任务（见官方 Q&A L189–L235 及源码）：
+
+1. **Decode 跨 128 边界时的状态快照（`llm_engine.py` L930 `do_copy_state` 与 `state_cache.py` L44 `select_state_slice`）**：
+   线上系统只在序列长度跨过 **128 的整数倍**（`KVSTORE_GRAIN = 128`）时，才会把当前请求的 SWA 状态拷贝出来落盘。设想最极端的情况：某条请求在本步之前已经缓存了 $127$ 个 token（位置 $0 \dots 126$），本步 decode 一口气写入了 $k = 6$ 个 token（位置 $127 \dots 132$），跨过了 $128$ 的边界！
+   在本步结束时，`do_copy_state` 触发，需要从环形缓冲区里完整切出截至位置 $127$ 的那 **整整 128 个历史槽位**（位置 $0 \dots 127$）去落盘；而此时位置 $128 \dots 132$（共 5 个超调位置）也已经写进了同一个环形缓冲区里！如果还要留 1 个对齐安全位或算上本步写入的全部 6 个偏移，环形缓冲区拥有 $128 + 6 = 134$ 个槽位，就能保证无论单步 6 个 token 落在 128 边界的哪个相位上，边界前完整的 128 个 token 窗口都原封不动地躺在 Ring 里等待拷贝！
+2. **Prefill 历史窗口加载（`prepare_tensor_input_v4.cpp` L378–L383 `make_swa_block_load_plan`）**：
+   当新 chunk 开始前需要把历史 SWA 状态载入 Ring 时，加载计划直接读取 `[history_end - 128, history_end)` 整整 128 个严格先前的历史位置，再加上本步最多 6 个回退余量，正好占满 $128 + 6 = 134$ 个槽位。
+3. **YoCo 预填充截断与前缀缓存命中上限（`prepare_tensor_input_v4.cpp` L355 及官方 Q&A L231–L235）**：
+   为了确保 YoCo 后半段层和 SWA Bounded Replay 有完整的窗口可用，未命中的尾部保留长度固定为 `window_size + max_backtracking_tokens = 128 + 6 = 134`。
+
+另外，在 `StateBlock`（`cache_engine.py` L221–L241）内部，槽位还被精心地划分为前半段 **Stored 区**（前 20 层 Producer SWA，每请求 `20 × 134 × 528 B ≈ 1.35 MiB`，需要跨请求落盘复用）和后半段 **Dropped 区**（YoCo Consumer 层的 SWA 与压缩状态，可通过重算最后 128 个 token 恢复，无需落盘）。
+
+---
+
+## 4.4 `BlockManager` 源码剖析：为什么块 0 不用？为什么需要双锁？
+
+不管是分页 KV 池还是定长 State 池，底层用的都是同一个仅有 242 行 C++ 代码的 `BlockManager`（`csrc/engine/block_manager.hpp`）。它的核心数据结构是一个用数组下标模拟的双向空闲链表 `Blocks`（L27–L117）：
+
+```{.mermaid caption="图 4-3　BlockManager 中单个物理块的生命周期与引用计数流转（block_manager.hpp L27–L165）"}
+flowchart TB
+  subgraph InitPool["1. 空闲池（FIFO 双向链表，块 0 永久保留为空指针哨兵）"]
+    direction LR
+    Init["初始化：块 1..N-1 依次入队"] --> Free["空闲状态 (Free)<br/>ref_count = 0，allocate() 从表头弹出"]
+  end
+
+  subgraph ActivePool["2. 活跃引用池（支持 fork_seq 零拷贝共享前缀）"]
+    direction LR
+    Used1["独占使用 (Used)<br/>ref_count = 1"] -- "pin_block() 引用加 1" --> Shared["多请求共享 (Shared)<br/>ref_count > 1"]
+    Shared -- "free() 引用减 1" --> Used1
+    Used1 -- "free() 归 0 挂回空闲链表尾" --> Ret["归还空闲池"]
+  end
+
+  InitPool --> ActivePool
 ```
 
-`BlockManager` 继承 `Lockable`，带一把互斥锁。调度时用 RAII 的 `BlockManagerMutexAcquire` 同时锁住 `state_manager` 和 `block_manager`（L189–L206），顺序固定为先 state 后 block，避免两把锁交叉导致死锁。为什么一个单线程调度器还需要锁？因为 `_schedule` 一开头就 `py::gil_scoped_release` 释放了 GIL（`scheduler.hpp` L276），结构化输出的编译线程池、多模态处理线程等 Python 线程可以同时运行，其中 fork、free 等操作也会碰到块管理器。
+读 `block_manager.hpp` 时记住三个要点：
 
-## 4.6 KV 使用率怎么算
+1. **为什么物理块 0 永远不用？** 数组实现的双向链表需要一个类似 `nullptr` 的哨兵值来表示“链表到头了”。DeepInfer 直接把下标 `0` 当作空指针哨兵（L27 注释：“gpu blocks 0 是不用的，所以这里 0 代表空”），真正可分配的物理块编号是 `1 .. num_blocks - 1`。同时，在 `clone_blocks` 传递 `(src_block, dst_block)` 时，`dst_block = 0` 也天然代表“无需克隆”。
+2. **三态分配检查 `can_allocate`（L127–L135）**：
+   - 若请求所需的块数 `>= num_blocks`（超过总容量上限），返回 `AllocStatus::NEVER`，调度器直接将该请求标为 `FINISHED_IGNORED`；
+   - 若所需块数 `<= get_num_free_blocks()`，返回 `AllocStatus::OK`；
+   - 否则返回 `AllocStatus::LATER`，调度器暂停本轮 prefill 扩批，等待在途请求释放块。
+3. **为什么单线程调度器还要加互斥锁？** 在 `scheduler.hpp` L189–L206 中，每次调度都会用 `BlockManagerMutexAcquire` 按**先锁 `state_manager`、再锁 `block_manager`** 的固定顺序同时锁住两本账。原因在于 `_schedule` 一进门就调用了 `py::gil_scoped_release` 释放了 Python GIL（`scheduler.hpp` L276）！此时后台的结构化输出（SO）编译线程或多模态预处理线程可能正在并发调用 `free` 或 `fork`，固定加锁顺序既保证了线程安全，又彻底消除了死锁风险。
 
-`get_gpu_cache_usage`（`scheduler.hpp` L830–L835）= 已用块数 / `num_blocks`。分母包含了保留的块 0，所以“全部可用块用光”时这个值是 `(n-1)/n`，不是 1.0。prefill 的 0.9 水位线就是拿这个值比较的。
+---
 
-## 4.7 开源版没有前缀缓存
+## 4.5 本章小结
 
-`csrc/engine/` 里没有任何哈希相关代码（`grep -rn hash csrc/engine` 无结果）。`_schedule_prefill` 里有一个变量叫 `prefix_caching_hit`，但它只是标记“这个请求是新分配块的，还是 fork 来的”，不涉及跨请求的前缀匹配。跨请求的前缀复用就是 README 说的“KV cache system”，没有开源。官方 Q&A 描述了它在生产中的做法：Block KVCache 存在独立的 3FS 集群（约 100 PiB SSD），命中长度由 Block KVCache 决定，SWA KVCache 只决定最后一块是否要重算；SWA 未命中时通过 **SWA Bounded Replay** 只重算最后 128 个 token。这部分只能读文档，代码里看不到。
+- **两套显存账本各司其职**：随长度增长的压缩 KV（`ca_cache`）与索引 KV（`ica_cache`）走 128-token 粒度的分页块池；固定窗口的 SWA KV（`swa_cache`）与压缩边界状态走每请求一槽的定长 State 池。
+- **两个环形缓冲区长度的精确含义**：压缩状态 Ring 取 $\text{ratio} + 5$（满足单步前向与投机回退下界 $W + k - 1$），而主模型 SWA Ring 取 $128 + 6 = 134$（额外兼容跨 128 边界落盘快照、预填充历史窗口加载与 YoCo 尾部保留）。
+- **轻量级 C++ 块管理**：用块 0 作哨兵、用数组双向链表实现 $O(1)$ 分配与释放、用引用计数支持 `fork_seq` 零拷贝共享前缀。
+
+理解了显存是怎么管账的，下一章我们来看 DeepInfer 是怎么用 **零开销异步调度（ZOS）** 把 CPU 的调度开销藏进 GPU 的计算阴影里的。

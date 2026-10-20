@@ -1,64 +1,92 @@
 # DeepInfer 源码解读与从 0 到 1
 
-作者：**Hawk Wu**
+<p align="center">
+  作者：<b>Hawk Wu</b><br/>
+  <a href="https://cluster1900.github.io/deepinfer-reader/"><b>📖 在线阅读（交互式网页版）</b></a> ·
+  <a href="https://cluster1900.github.io/deepinfer-reader/deepinfer-reader.epub"><b>📱 下载 EPUB 电子书</b></a> ·
+  <a href="https://cluster1900.github.io/deepinfer-reader/deepinfer-reader.pdf"><b>📄 下载 PDF 排版版</b></a> ·
+  <a href="https://github.com/cluster1900/deepinfer-reader/releases"><b>📦 Releases 发布页</b></a>
+</p>
 
-[在线阅读](https://cluster1900.github.io/deepinfer-reader/) · [下载 EPUB](https://cluster1900.github.io/deepinfer-reader/deepinfer-reader.epub) · [下载 PDF](https://cluster1900.github.io/deepinfer-reader/deepinfer-reader.pdf) · [Releases（EPUB / PDF / 离线网页包）](https://github.com/cluster1900/deepinfer-reader/releases)
+这是一本深入剖析 DeepSeek 开源推理框架 **[DeepInfer](https://github.com/deepseek-ai/DeepInfer)**（固定提交 `8b16149741a4935e1dec8cea27853f273b374c5b`）、并带你用纯 Python + NumPy 从零手写同构教学引擎 `minidi` 的实战技术书。
 
-一本中文书，分两部分：
+全书遵循 **“痛点直觉 → 小数字图解推演 → 真实 C++/Python 源码逐行对照 → 亲手写代码实验验证”** 的认知节奏，彻底讲透现代大模型生产级推理引擎的核心机制。
 
-- **第一部分（第 1–8 章）完整解读 DeepSeek 开源的推理框架 [DeepInfer](https://github.com/deepseek-ai/DeepInfer)**：仓库地图、请求的一生、C++ 调度器、显存与 KV Cache、异步调度（ZOS）与 CUDA Graph、DSpark 置信度变长验证、模型/算子/并行/EPLB、配置运行与 vLLM/SGLang 对比。所有路径、行号、默认值都对照固定提交 `8b16149741a4935e1dec8cea27853f273b374c5b` 逐条核对；官方 Q&A 里的数字会单独标注。
-- **第二部分（第 9–16 章）个人如何从 0 到 1**：用纯 Python + NumPy 写一个 CPU 上可跑的教学引擎 `minidi`（867 行），分阶段实现分页 KV、调度与抢占、异步调度、投机解码与变长验证、SWA 环形缓冲、EPLB 和多 rank 步型投票。每个阶段都有测试，并对照 DeepInfer 的真实代码，写明简化了什么、开发时踩过哪些坑。
+---
 
-全书 28 张图（21 张 mermaid 结构图、7 张由脚本从 `minidi` 实跑生成的数据图）。
+## 本书亮点
 
-## 章节
+- **第一部分（第 1–8 章）：拆解真实的 DeepInfer 生产源码**
+  - **全局定位与部署架构**：为什么 DeepInfer 放弃张量并行（TP），选择 DP/CP + Wide-EP + E/P/D 分离？6 万行代码里哪 1 万行是核心骨架？
+  - **C++ 调度器与双指针抢占**：为什么 Prefill 步与 Decode 步绝不混跑？多 DP 卡怎么通过 `ALL(70)` / `ANY(100)` 两轮投票对齐步型？为什么 Decode 按 `output_len` 降序后右指针保新（LCFS）、左指针优先抢占长输出大户？
+  - **双池显存账本**：为什么压缩 KV 走 128-token 分页块池，而滑动窗口（SWA）走定长环形状态池？为什么压缩状态 Ring 是 `ratio + 5`，而主模型 SWA Ring 是 `128 + 6 = 134`？
+  - **零开销异步调度（ZOS）**：CPU 在还不知道第 $N$ 步采样结果时超前调度第 $N+1$ 步，如何通过双变量在途计数、GPU 端 `remap` 与 `compute_seqlens_k_zos` 公式修正在途长度？
+  - **DFlash 投机解码与变长验证**：如何用一次并行前向提取 5 个草稿特征、再用马尔可夫头与置信度头逐步采样？如何结合 CUDA Graph 阶梯耗时曲线贪心分配每步验证预算？
+  - **YoCo 双段架构与 EPLB 负载均衡**：为什么 Prefill 中间块可以直接跳过后半段 Consumer 层？如何通过历史步峰值贪心复制与放置冗余专家消除 MoE 木桶效应？
+- **第二部分（第 9–16 章）：从 0 到 1 手写 CPU 教学引擎 `minidi`**
+  - 用 **870 行纯 Python + NumPy**（零 GPU 依赖）分 7 个阶段完整复刻 `TinyLM`、`PagedKV`、`BlockManager`、`Scheduler`、`ZOSEngine`、投机解码与变长验证、`SWARing`、`EPLB` 与多卡投票。
+  - 配套 **64 个 `pytest` 单元测试**（笔记本 CPU 1 秒内跑完），真实复盘开发过程中踩到的“缺少 80% 容量闸门死锁”“分块 Prefill 与抢占重算队头互等”“在途请求被抢占计数错乱”等工程陷阱。
 
-| | 章 | 内容 |
-|---|---|---|
-| | 前言 | 读的是哪份代码、怎么核对 |
-| 一 | 1 定位与仓库地图 | 代码规模、模块划分、支持范围 |
-| | 2 请求的一生 | `LLM.generate` → C++ 调度器 → Worker → 输出 |
-| | 3 调度器 | prefill/decode 分离、跨 rank 投票、FCFS、抢占 |
-| | 4 显存与 KV Cache | 块数计算、块管理、KV 格式、SWA 状态槽 |
-| | 5 异步调度 | ZOS 四阶段、在途计数、remap、CUDA Graph |
-| | 6 投机解码 | 置信度变长验证的贪心与两轮接受率 |
-| | 7 模型、算子与并行 | 模块角色、算子库、DP/EP/CP、EPLB |
-| | 8 配置、运行与对比 | 运行方式、常用开关、批不变、vLLM/SGLang |
-| 二 | 9 路线图 | 阶段划分与原则 |
-| | 10 最小引擎 | TinyLM、扁平变长批次、step 循环 |
-| | 11 分页 KV | 块表、块管理、容量闸门 |
-| | 12 调度与抢占 | FCFS、LCFS 抢占、队头互等的坑 |
-| | 13 异步调度 | 先调度后知道结果、在途抢占的坑 |
-| | 14 投机解码 | 验证、回退、变长验证的最优性 |
-| | 15 SWA / EPLB / 投票 | ring 余量推导、负载均衡、步型投票 |
-| | 16 走向 GPU | 差距清单与下一步 |
+---
 
-## 动手
+## 全书目录
+
+| 部分 | 章节 | 核心主题 | 配套代码与图表 |
+| --- | --- | --- | --- |
+| **序** | [前言](chapters/00_preface.md) | 为什么要读 DeepInfer、全书双线结构与四步阅读法 | 图 0-1 全书导览图 |
+| **第一部分**<br/>解读 DeepInfer | [第 1 章](chapters/01_overview.md) | **定位与仓库地图**：E/P/D 分离架构、子模块与 1 万行核心骨架 | `data/deepinfer_loc.json` |
+| | [第 2 章](chapters/02_lifecycle.md) | **一个请求的一生**：四阶段启动、状态机与 `num_tokens = len - 1` 不变量 | 5 张跨层时序与架构图 |
+| | [第 3 章](chapters/03_scheduler.md) | **C++ 调度器**：步型分离、两轮投票、FCFS 分块、LCFS 抢占与尾块缩容 | `csrc/engine/scheduler.hpp` |
+| | [第 4 章](chapters/04_memory.md) | **显存与 KV Cache**：分页块池 vs 定长 State 池、`134` 与 `ratio+5` 推导 | `cache_engine.py` · `block_manager.hpp` |
+| | [第 5 章](chapters/05_zos.md) | **零开销异步调度（ZOS）**：四阶段流水线、双变量在途计数与 `seqlens_k` 修正 | `worker.py` · `zos.cpp` |
+| | [第 6 章](chapters/06_varlen.md) | **DFlash 投机与变长验证**：并行提特征 + 马尔可夫头 + 贪心卡档位 | `dflash.py` · `mtp_varlen.hpp` |
+| | [第 7 章](chapters/07_model_parallel.md) | **模型、算子与并行**：YoCo 双段截断、Wide-EP、Mega MoE 与 EPLB | `v4_modules/` · `eplb/policy.py` |
+| | [第 8 章](chapters/08_run_compare.md) | **配置、确定性推理与横评**：12 个核心开关、批不变三条件、对比 vLLM/SGLang | `environ.py` · 横评表 |
+| **第二部分**<br/>手写 `minidi` | [第 9 章](chapters/09_roadmap.md) | **从 0 到 1 路线图**：四条开发铁律与七阶段演进蓝图 | `examples/quickstart.py` |
+| | [第 10 章](chapters/10_minimal_engine.md) | **最小引擎**：`TinyLM`、扁平变长批次、`Engine.step` 与按位置确定性采样 | `minidi/model.py` · `engine.py` |
+| | [第 11 章](chapters/11_paged_kv.md) | **手写分页 KV 与块管理**：块表寻址、FIFO 链表与“80% 容量闸门”死锁复盘 | `minidi/blocks.py` · `sequence.py` |
+| | [第 12 章](chapters/12_scheduler.md) | **手写调度器与抢占**：双指针抢占、尾块回收与“半截 chunk 队头互等”死锁修复 | `minidi/scheduler.py` |
+| | [第 13 章](chapters/13_zos.md) | **手写异步调度 `ZOSEngine`**：`self.prev` 信息隔离与在途抢占防线 | `minidi/zos.py` |
+| | [第 14 章](chapters/14_speculative.md) | **手写投机解码与变长验证**：单步并行验证回退与贪心前缀全局最优性证明 | `minidi/varlen.py` |
+| | [第 15 章](chapters/15_swa_eplb.md) | **手写 SWA Ring、EPLB 与多卡投票**：$W+k-1$ 回退实测与贪心装箱 | `minidi/swa.py` · `eplb.py` · `vote.py` |
+| | [第 16 章](chapters/16_toward_gpu.md) | **走向生产级 GPU**：差距清单与五步进阶改造路线 | 图 16-1 进阶路线图 |
+| **附录** | [致谢与勘误](chapters/99_credits.md) | 致谢、引用来源及上游源码中两处“注释与实现不一致”的核对记录 | — |
+
+---
+
+## 三分钟快速上手
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements-examples.txt   # numpy、matplotlib、pytest
-python -m pytest                           # 63 个用例
-python examples/quickstart.py              # 同步 / ZOS / 投机解码三种引擎对照
-python scripts/figures/make_plots.py       # 重新生成数据图
+# 1. 创建虚拟环境并安装轻量依赖（仅需 numpy、matplotlib、pytest）
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-examples.txt
+
+# 2. 运行全部 64 个单元测试（1 秒内完成）
+python3 -m pytest
+
+# 3. 运行快速演示：对比同步引擎、异步 ZOS 引擎与投机解码引擎
+python3 examples/quickstart.py
+
+# 4. 在 CPU 上实跑 minidi 生成全书数据图
+python3 scripts/figures/make_plots.py
 ```
 
-## 构建
+---
+
+## 构建全书（网页 / EPUB / PDF）
 
 ```bash
-# 依赖：pandoc ≥ 3.0、Node ≥ 22、Chrome/Chromium、Noto CJK 字体、poppler-utils
+# 依赖：pandoc >= 3.0、Node >= 22、Chrome/Chromium、CJK 字体、poppler-utils
 PUPPETEER_SKIP_DOWNLOAD=1 npm ci
-python3 scripts/check_book.py      # 门禁：章节结构、图片、疑似密钥、固定 commit
-python3 build.py                   # dist/index.html、dist/deepinfer-reader.epub、dist/deepinfer-reader.pdf
+python3 scripts/check_book.py      # 质量门禁：章节结构、图表数量、固定 commit 核验
+python3 build.py                   # 生成 dist/index.html、dist/deepinfer-reader.epub、dist/deepinfer-reader.pdf
 python3 scripts/check_outputs.py dist --min-figures 28
 ```
 
-推送到 `main` 后 GitHub Actions 构建并部署 GitHub Pages；推送 `vX.Y.Z` 标签会把 EPUB、PDF、离线网页包和 `SHA256SUMS.txt` 附到对应 Release。
+---
 
-## 已知的不确定之处
+## 开源许可
 
-见书末“致谢与引用”一节：两处 DeepInfer 代码与注释不一致、SWA ring 余量多 1 的原因未追到、本书没有在 SM100/昇腾上实际运行 DeepInfer、对比表中 vLLM/SGLang 两列未逐条核验源码。
-
-## 许可
-
-`minidi/`、`tests/`、`examples/`、`scripts/` 中的代码以 MIT 协议发布（见 `LICENSE`）。书稿正文以 CC BY 4.0 发布。书中引用的 DeepInfer 代码片段版权归 DeepSeek-AI 所有（Apache License 2.0）。
+- 仓库中的配套代码（`minidi/`、`tests/`、`examples/`、`scripts/`）采用 **MIT License** 开源（见 [`LICENSE`](LICENSE)）。
+- 书稿正文与原创图表采用 **CC BY 4.0** 许可协议发布。
+- 书中引用的 DeepInfer 源码片段版权归 DeepSeek-AI 所有（Apache License 2.0）。
