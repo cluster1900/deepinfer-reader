@@ -1,0 +1,15 @@
+body { max-width: 46em; margin: 0 auto; padding: 1.5em; line-height: 1.75;
+  font-family: -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; color: #222; }
+h1, h2, h3 { line-height: 1.35; }
+h1 { border-bottom: 2px solid #ddd; padding-bottom: .3em; margin-top: 2em; }
+code { font-family: "JetBrains Mono", Menlo, Consolas, monospace; font-size: .92em; }
+pre { background: #f6f8fa; padding: 1em; overflow-x: auto; border-radius: 6px; }
+table { border-collapse: collapse; margin: 1em 0; display: block; overflow-x: auto; }
+th, td { border: 1px solid #ddd; padding: .4em .7em; }
+blockquote { border-left: 4px solid #ddd; margin-left: 0; padding-left: 1em; color: #555; }
+nav#TOC { background: #fafafa; border: 1px solid #eee; padding: .5em 1.5em; border-radius: 6px; }
+figure { margin: 1.2em 0; text-align: center; }
+figure img, figure svg, img.mermaid-figure { max-width: 100%; height: auto; }
+figcaption { font-size: .92em; color: #555; margin-top: .4em; }
+.downloads { background: #f3f7ff; border: 1px solid #d6e2ff; border-radius: 6px; padding: .5em 1em; }
+math[display="block"] { overflow-x: auto; }
