@@ -143,24 +143,24 @@ def downloads_snippet(path, lang="zh", prefix=""):
         html = (
             '<div class="downloads">'
             '<span>📚 <b>DeepInfer Source Code Walkthrough &amp; From 0 to 1</b> (Verified line-by-line against commit <code>8b16149</code> · Companion CPU engine <code>minidi</code>)</span>'
-            '<span>Downloads &amp; Links: '
-            f'<a href="{prefix}{SLUG_EN}.epub">📱 EPUB (EN)</a> · '
-            f'<a href="{prefix}{SLUG_EN}.pdf">📄 PDF (EN)</a> · '
-            f'<a href="{prefix}index.html">🌐 中文版</a> · '
-            '<a href="https://github.com/cluster1900/deepinfer-reader">⭐ GitHub</a> · '
-            '<a href="https://github.com/cluster1900/deepinfer-reader/releases">📦 Releases</a>'
+            '<span class="downloads-btns">'
+            '<a class="star-cta" href="https://github.com/cluster1900/deepinfer-reader" target="_blank" rel="noopener">⭐ Star on GitHub</a>'
+            f'<a class="lang-switch-link" href="{prefix}index.html">🌐 中文版</a>'
+            f'<a href="{prefix}{SLUG_EN}.epub">📱 EPUB (EN)</a>'
+            f'<a href="{prefix}{SLUG_EN}.pdf">📄 PDF (EN)</a>'
+            '<a href="https://github.com/cluster1900/deepinfer-reader/releases" target="_blank" rel="noopener">📦 Releases</a>'
             '</span></div>\n'
         )
     else:
         html = (
             '<div class="downloads">'
             '<span>📚 <b>DeepInfer 源码解读与从 0 到 1</b>（基于 commit <code>8b16149</code> 逐行核对 · 配套 CPU 教学引擎 <code>minidi</code>）</span>'
-            '<span>下载离线版：'
-            f'<a href="{prefix}{SLUG}.epub">📱 EPUB 电子书</a> · '
-            f'<a href="{prefix}{SLUG}.pdf">📄 PDF 排版版</a> · '
-            f'<a href="{prefix}index-en.html">🌐 English Edition</a> · '
-            '<a href="https://github.com/cluster1900/deepinfer-reader">⭐ GitHub 仓库</a> · '
-            '<a href="https://github.com/cluster1900/deepinfer-reader/releases">📦 Releases</a>'
+            '<span class="downloads-btns">'
+            '<a class="star-cta" href="https://github.com/cluster1900/deepinfer-reader" target="_blank" rel="noopener">⭐ Star 我的 GitHub</a>'
+            f'<a class="lang-switch-link" href="{prefix}index-en.html">🌐 English Edition</a>'
+            f'<a href="{prefix}{SLUG}.epub">📱 EPUB 电子书</a>'
+            f'<a href="{prefix}{SLUG}.pdf">📄 PDF 排版版</a>'
+            '<a href="https://github.com/cluster1900/deepinfer-reader/releases" target="_blank" rel="noopener">📦 Releases</a>'
             '</span></div>\n'
         )
     with open(path, "w", encoding="utf-8") as f:
@@ -168,7 +168,7 @@ def downloads_snippet(path, lang="zh", prefix=""):
 
 
 def reader_ui_snippet(path, lang="zh", prefix=""):
-    """为 GitHub Pages 注入交互式阅读器增强脚本（侧边目录搜索、分章/全文切换、中英切换、主题切换、图片灯箱）。"""
+    """为 GitHub Pages 注入交互式阅读器增强脚本（侧边目录搜索、分章/全文切换、中英切换、Star GitHub、主题切换、图片灯箱）。"""
     if lang == "en":
         title = TITLE_EN
         slug = SLUG_EN
@@ -182,7 +182,9 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
         th_tip = "Cycle Light / Sepia / Dark theme"
         lang_href = f"{prefix}index.html"
         lang_btn = "🌐 中文"
-        lang_tip = "切换到中文版 (Switch to Chinese Edition)"
+        lang_tip = "切换到中文版，保持当前章节 (Switch to Chinese Edition)"
+        star_btn = "⭐ Star on GitHub"
+        star_tip = "Star this project on GitHub ⭐"
         prev_lbl = "← Previous Chapter"
         next_lbl = "Next Chapter →"
         search_ph = "🔍 Search chapters or sections..."
@@ -201,7 +203,9 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
         th_tip = "切换浅色 / 护眼 / 深色主题"
         lang_href = f"{prefix}index-en.html"
         lang_btn = "🌐 English"
-        lang_tip = "Switch to English Edition (切换到英文版)"
+        lang_tip = "Switch to English Edition, keeping current chapter (切换到英文版)"
+        star_btn = "⭐ Star 我的 GitHub"
+        star_tip = "前往 GitHub 给本项目点个 Star ⭐"
         prev_lbl = "← 上一章"
         next_lbl = "下一章 →"
         search_ph = "🔍 搜索章节或小节标题..."
@@ -219,9 +223,10 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
     <button class="reader-btn active" id="modeChapterBtn" title="{ch_tip}">{ch_btn}</button>
     <button class="reader-btn" id="modeScrollBtn" title="{sc_tip}">{sc_btn}</button>
     <button class="reader-btn" id="themeBtn" title="{th_tip}">{th_btn}</button>
-    <a class="reader-btn" href="{lang_href}" title="{lang_tip}">{lang_btn}</a>
+    <a class="reader-btn reader-btn-lang lang-switch-link" id="langSwitchBtn" href="{lang_href}" title="{lang_tip}">{lang_btn}</a>
     <a class="reader-btn" href="{prefix}{slug}.epub">📱 EPUB</a>
     <a class="reader-btn" href="{prefix}{slug}.pdf">📄 PDF</a>
+    <a class="reader-btn reader-btn-star" href="https://github.com/cluster1900/deepinfer-reader" target="_blank" rel="noopener" title="{star_tip}">{star_btn}</a>
   </div>
 </header>
 <div class="img-lightbox" id="imgLightbox" title="{lb_title}">
@@ -247,12 +252,20 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
 
   const chapters = [];
   let currentSection = null;
+  let titleBlockHeader = null;
   for (const node of toMove) {{
+    if (node.nodeType === 1 && node.id === 'title-block-header') {{
+      titleBlockHeader = node;
+      continue;
+    }}
     if (node.nodeType === 1 && node.tagName === 'H1') {{
       currentSection = document.createElement('section');
       currentSection.className = 'chapter-section';
       currentSection.dataset.chapterIndex = chapters.length;
       main.appendChild(currentSection);
+      if (chapters.length === 0 && titleBlockHeader) {{
+        currentSection.appendChild(titleBlockHeader);
+      }}
       chapters.push({{ section: currentSection, h1: node, title: node.textContent.trim(), id: node.id }});
     }}
     if (currentSection) {{
@@ -272,7 +285,7 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
       const btn = document.createElement('button');
       btn.className = 'chapter-nav-btn prev';
       btn.innerHTML = '<span class="chapter-nav-label">{prev_lbl}</span><span class="chapter-nav-title">' + prev.title + '</span>';
-      btn.onclick = () => selectChapter(idx - 1, true);
+      btn.onclick = () => selectChapter(idx - 1, true, true);
       footer.appendChild(btn);
     }}
     if (idx < chapters.length - 1) {{
@@ -280,7 +293,7 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
       const btn = document.createElement('button');
       btn.className = 'chapter-nav-btn next';
       btn.innerHTML = '<span class="chapter-nav-label">{next_lbl}</span><span class="chapter-nav-title">' + next.title + '</span>';
-      btn.onclick = () => selectChapter(idx + 1, true);
+      btn.onclick = () => selectChapter(idx + 1, true, true);
       footer.appendChild(btn);
     }}
     ch.section.appendChild(footer);
@@ -312,13 +325,27 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
   let activeChapter = 0;
 
   function updateTocHighlight(targetId) {{
+    let activeLink = null;
     toc.querySelectorAll('a').forEach(a => {{
       const href = decodeURIComponent(a.getAttribute('href') || '');
-      a.classList.toggle('active-toc', href === '#' + targetId);
+      const isMatch = href === '#' + targetId;
+      a.classList.toggle('active-toc', isMatch);
+      if (isMatch) activeLink = a;
+    }});
+    if (activeLink) {{
+      activeLink.scrollIntoView({{ block: 'nearest' }});
+    }}
+  }}
+
+  function updateLangLinks() {{
+    document.querySelectorAll('a.lang-switch-link').forEach(a => {{
+      const baseHref = (a.getAttribute('data-base-href') || a.getAttribute('href') || '').split('?')[0].split('#')[0];
+      a.setAttribute('data-base-href', baseHref);
+      a.setAttribute('href', baseHref + '?ch=' + activeChapter);
     }});
   }}
 
-  function selectChapter(idx, scrollToTop) {{
+  function selectChapter(idx, scrollToTop, updateHash) {{
     if (idx < 0 || idx >= chapters.length) return;
     activeChapter = idx;
     if (mode === 'chapter') {{
@@ -328,8 +355,11 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
       navFooters.forEach(f => f.style.display = 'flex');
       if (scrollToTop) window.scrollTo({{ top: 0, behavior: 'smooth' }});
       updateTocHighlight(chapters[idx].id);
-      history.replaceState(null, '', '#' + chapters[idx].id);
+      if (updateHash) {{
+        history.replaceState(null, '', idx === 0 ? location.pathname : ('#' + chapters[idx].id));
+      }}
     }}
+    updateLangLinks();
   }}
 
   function applyMode(newMode) {{
@@ -340,8 +370,9 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
     if (mode === 'scroll') {{
       chapters.forEach(ch => ch.section.style.display = 'block');
       navFooters.forEach(f => f.style.display = 'none');
+      updateLangLinks();
     }} else {{
-      selectChapter(activeChapter, false);
+      selectChapter(activeChapter, false, false);
     }}
   }}
 
@@ -359,7 +390,7 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
     if (chIdx !== undefined && mode === 'chapter') {{
       e.preventDefault();
       const changed = (chIdx !== activeChapter);
-      selectChapter(chIdx, false);
+      selectChapter(chIdx, false, false);
       const targetEl = document.getElementById(targetId);
       if (targetEl && targetId !== chapters[chIdx].id) {{
         setTimeout(() => targetEl.scrollIntoView({{ behavior: 'smooth', block: 'start' }}), changed ? 30 : 0);
@@ -371,14 +402,25 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
     }}
   }});
 
+  // Resolve initial chapter from ?ch= query parameter (used by language switch) or URL hash
+  const params = new URLSearchParams(location.search);
+  const chParam = params.get('ch');
   const initHash = decodeURIComponent(location.hash.replace(/^#/, ''));
-  if (initHash && idToChapter.has(initHash)) {{
+  if (chParam !== null && !isNaN(parseInt(chParam, 10))) {{
+    const parsed = parseInt(chParam, 10);
+    if (parsed >= 0 && parsed < chapters.length) {{
+      activeChapter = parsed;
+    }}
+    history.replaceState(null, '', location.pathname);
+  }} else if (initHash && idToChapter.has(initHash)) {{
     activeChapter = idToChapter.get(initHash);
   }}
   applyMode(mode);
-  if (initHash) {{
+  if (initHash && !chParam) {{
     const el = document.getElementById(initHash);
     if (el) setTimeout(() => el.scrollIntoView(), 60);
+  }} else {{
+    window.scrollTo(0, 0);
   }}
 
   // 5. Theme toggle (Light -> Sepia -> Dark)
