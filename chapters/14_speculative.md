@@ -99,7 +99,7 @@ def schedule_varlen(acc_rates: list[list[float]], curve: list[tuple[int, float]]
     return seqlens_q, best_bsz, best_tp
 ```
 
-### 为什么这个 $O(K \log K)$ 的简单贪心算法一定能找到全局最优解？
+### 为什么这个 `O(K log K)` 的简单贪心算法一定能找到全局最优解？
 
 假设批次里有 $B$ 条请求，每条请求最多选前 $k_i \in \{0, 1, \dots, 5\}$ 个草稿，组合总数高达 $6^B$ 种（当 $B=64$ 时是 $6^{64}$ 种天文数字）。为什么 `schedule_varlen` 不需要做复杂的动态规划，只需排个序扫一遍就能拿到全局最优？
 
