@@ -1,0 +1,10 @@
+{
+  "name": "deepinfer-reader-build",
+  "private": true,
+  "description": "构建依赖：Mermaid 预渲染与 PDF 打印（用系统 Chrome，不下载浏览器）",
+  "engines": { "node": ">=22.13" },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "12.0.0",
+    "puppeteer": "25.14.0"
+  }
+}

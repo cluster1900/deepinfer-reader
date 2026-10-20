@@ -1,0 +1,86 @@
+name: Build book and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pandoc, fonts, poppler, epubcheck
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.5/pandoc-3.5-1-amd64.deb
+          sudo dpkg -i /tmp/pandoc.deb
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-noto-cjk fonts-dejavu-core poppler-utils epubcheck >/dev/null
+          echo "CHROME_PATH=$(command -v google-chrome || command -v chromium)" >> "$GITHUB_ENV"
+      - name: Install build deps (mermaid-cli, puppeteer; uses system Chrome)
+        run: npm ci --no-audit --no-fund
+      - name: Review gate (structure, figures, secrets, pinned commit)
+        run: python3 scripts/check_book.py
+      - name: minidi tests and quickstart (CPU)
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q -r requirements-examples.txt
+          python3 -m pytest
+          python3 examples/quickstart.py
+      - name: Figure scripts run on CPU
+        run: python3 scripts/figures/make_plots.py --out build/figcheck
+      - name: Build HTML + EPUB + PDF
+        run: python3 build.py
+      - name: Check outputs
+        run: |
+          set -euo pipefail
+          python3 scripts/check_outputs.py dist --min-figures 28 --expect "DeepInfer 源码解读" --expect 抢占 --expect 变长验证
+          epubcheck dist/deepinfer-reader.epub
+          mkdir -p build/preview
+          pdftoppm -r 80 -png -f 1 -l 4 dist/deepinfer-reader.pdf build/preview/page
+      - name: Upload EPUB + PDF + previews (for review)
+        uses: actions/upload-artifact@v4
+        with:
+          name: book
+          path: |
+            dist/deepinfer-reader.epub
+            dist/deepinfer-reader.pdf
+            build/preview/
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

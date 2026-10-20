@@ -1,0 +1,61 @@
+name: Release EPUB, PDF and web bundle
+
+# 推送 vX.Y.Z 标签时，构建并把 EPUB、PDF、离线网页包和 SHA256SUMS.txt 附到同名 Release。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)attach files to
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pandoc, fonts, poppler, epubcheck
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.5/pandoc-3.5-1-amd64.deb
+          sudo dpkg -i /tmp/pandoc.deb
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-noto-cjk fonts-dejavu-core poppler-utils epubcheck >/dev/null
+          echo "CHROME_PATH=$(command -v google-chrome || command -v chromium)" >> "$GITHUB_ENV"
+      - run: npm ci --no-audit --no-fund
+      - name: Build and check
+        run: |
+          set -euo pipefail
+          python3 scripts/check_book.py
+          python3 -m pip install -q -r requirements-examples.txt
+          python3 -m pytest
+          python3 build.py
+          python3 scripts/check_outputs.py dist --min-figures 28 --expect "DeepInfer 源码解读"
+          epubcheck dist/deepinfer-reader.epub
+          (cd dist && zip -qr ../deepinfer-reader-web.zip .)
+          cp dist/deepinfer-reader.epub dist/deepinfer-reader.pdf .
+          sha256sum deepinfer-reader.epub deepinfer-reader.pdf deepinfer-reader-web.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes-file CHANGELOG.md
+          gh release upload "$TAG" deepinfer-reader.epub deepinfer-reader.pdf deepinfer-reader-web.zip SHA256SUMS.txt --clobber

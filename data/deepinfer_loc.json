@@ -1,0 +1,20 @@
+{
+ "commit": "8b16149741a4935e1dec8cea27853f273b374c5b",
+ "total_lines": 60838,
+ "note": "统计 .py/.cpp/.hpp 物理行数，含注释与空行，不含 vendor 子模块",
+ "categories": {
+  "TileLang 自定义算子 (layers/tilelang_ops)": 23331,
+  "模型结构 (model_executor/models)": 7051,
+  "C++ 引擎核心 (csrc)": 5909,
+  "其余算子层 (layers 其他)": 1665,
+  "Worker 与缓存 (worker)": 2805,
+  "Python 引擎 (engine)": 1957,
+  "输入元数据 (input_metadata)": 1151,
+  "其余 deepinfer 包": 8393,
+  "示例与基准 (examples)": 3018,
+  "测试 (tests)": 3117,
+  "评测 (eval)": 1694,
+  "deep_cluster": 656,
+  "其他（setup 等）": 91
+ }
+}
