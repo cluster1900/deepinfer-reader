@@ -1,6 +1,6 @@
 name: Release EPUB, PDF and web bundle
 
-# 推送 vX.Y.Z 标签时，构建并把 EPUB、PDF、离线网页包和 SHA256SUMS.txt 附到同名 Release。
+# 推送 vX.Y.Z 标签时，构建并把中英双语 EPUB、PDF、离线网页包和 SHA256SUMS.txt 附到同名 Release。
 on:
   push:
     tags: ['v*']
@@ -48,9 +48,10 @@ jobs:
           python3 build.py
           python3 scripts/check_outputs.py dist --min-figures 28 --expect "DeepInfer 源码解读"
           epubcheck dist/deepinfer-reader.epub
+          epubcheck dist/deepinfer-reader-en.epub
           (cd dist && zip -qr ../deepinfer-reader-web.zip .)
-          cp dist/deepinfer-reader.epub dist/deepinfer-reader.pdf .
-          sha256sum deepinfer-reader.epub deepinfer-reader.pdf deepinfer-reader-web.zip > SHA256SUMS.txt
+          cp dist/deepinfer-reader.epub dist/deepinfer-reader.pdf dist/deepinfer-reader-en.epub dist/deepinfer-reader-en.pdf .
+          sha256sum deepinfer-reader.epub deepinfer-reader.pdf deepinfer-reader-en.epub deepinfer-reader-en.pdf deepinfer-reader-web.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: Attach to release
         env:
@@ -58,4 +59,4 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes-file CHANGELOG.md
-          gh release upload "$TAG" deepinfer-reader.epub deepinfer-reader.pdf deepinfer-reader-web.zip SHA256SUMS.txt --clobber
+          gh release upload "$TAG" deepinfer-reader.epub deepinfer-reader.pdf deepinfer-reader-en.epub deepinfer-reader-en.pdf deepinfer-reader-web.zip SHA256SUMS.txt --clobber

@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
-"""build.py：把 chapters/ 下的 Markdown 编译成三种格式。
+"""build.py：把 chapters/ 与 chapters_en/ 下的 Markdown 编译成中英双语的三种格式。
 
-  dist/index.html                 网页（GitHub Pages 交互式阅读器，含侧边栏目录、分章/全文切换、主题切换、EPUB/PDF 下载）
-  dist/deepinfer-reader.epub      EPUB 3
-  dist/deepinfer-reader.pdf       PDF（A4，目录、页码、书签，中文字体嵌入）
-
-正文里的 ```mermaid 代码块在构建时预渲染成 PNG，三种格式用同一张图，
-阅读器和 PDF 都不需要执行 JavaScript。写法：
-
-    ```{.mermaid caption="图 6-1　DFlash 投机草稿流水线"}
-    flowchart TB
-      A --> B
-    ```
+  dist/index.html                    中文网页（GitHub Pages 交互式阅读器）
+  dist/deepinfer-reader.epub         中文 EPUB 3
+  dist/deepinfer-reader.pdf          中文 PDF（A4，目录、页码、书签，中文字体嵌入）
+  dist/index-en.html                 英文网页（GitHub Pages 交互式阅读器）
+  dist/en/index.html                 英文网页（/en/ 子路径入口）
+  dist/deepinfer-reader-en.epub      英文 EPUB 3
+  dist/deepinfer-reader-en.pdf       英文 PDF（A4，目录、页码、书签）
 
 用法：
-  python3 build.py                         # 构建全书
+  python3 build.py                         # 构建中英双语全书
   python3 build.py --src tests/build_fixture --out build/fixture   # 构建测试样章
   python3 build.py --skip-pdf              # 只出网页和 EPUB（没有 Chrome 时）
 """
@@ -29,9 +25,11 @@ import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(BASE, "assets")
-TITLE = "DeepInfer 源码解读与从 0 到 1"
+TITLE_ZH = "DeepInfer 源码解读与从 0 到 1"
+TITLE_EN = "DeepInfer Source Code Walkthrough & From 0 to 1"
 AUTHOR = "Hawk Wu"
 SLUG = "deepinfer-reader"
+SLUG_EN = "deepinfer-reader-en"
 MD_FORMAT = "markdown-blank_before_blockquote+lists_without_preceding_blankline"
 FENCE_OPEN = re.compile(r"^(?P<fence>`{3,}|~{3,})\s*(?P<info>mermaid|\{[^}]*\.mermaid\b[^}]*\})\s*$")
 CAPTION = re.compile(r'caption="([^"]*)"')
@@ -140,40 +138,94 @@ class Mermaid:
             f.write("\n".join(out))
 
 
-def downloads_snippet(path):
-    html = (
-        '<div class="downloads">'
-        '<span>📚 <b>DeepInfer 源码解读与从 0 到 1</b>（基于 commit <code>8b16149</code> 逐行核对 · 配套 CPU 教学引擎 <code>minidi</code>）</span>'
-        '<span>下载离线版：'
-        f'<a href="{SLUG}.epub">📱 EPUB 电子书</a> · '
-        f'<a href="{SLUG}.pdf">📄 PDF 排版版</a> · '
-        '<a href="https://github.com/cluster1900/deepinfer-reader">⭐ GitHub 仓库</a> · '
-        '<a href="https://github.com/cluster1900/deepinfer-reader/releases">📦 Releases</a>'
-        '</span></div>\n'
-    )
+def downloads_snippet(path, lang="zh", prefix=""):
+    if lang == "en":
+        html = (
+            '<div class="downloads">'
+            '<span>📚 <b>DeepInfer Source Code Walkthrough &amp; From 0 to 1</b> (Verified line-by-line against commit <code>8b16149</code> · Companion CPU engine <code>minidi</code>)</span>'
+            '<span>Downloads &amp; Links: '
+            f'<a href="{prefix}{SLUG_EN}.epub">📱 EPUB (EN)</a> · '
+            f'<a href="{prefix}{SLUG_EN}.pdf">📄 PDF (EN)</a> · '
+            f'<a href="{prefix}index.html">🌐 中文版</a> · '
+            '<a href="https://github.com/cluster1900/deepinfer-reader">⭐ GitHub</a> · '
+            '<a href="https://github.com/cluster1900/deepinfer-reader/releases">📦 Releases</a>'
+            '</span></div>\n'
+        )
+    else:
+        html = (
+            '<div class="downloads">'
+            '<span>📚 <b>DeepInfer 源码解读与从 0 到 1</b>（基于 commit <code>8b16149</code> 逐行核对 · 配套 CPU 教学引擎 <code>minidi</code>）</span>'
+            '<span>下载离线版：'
+            f'<a href="{prefix}{SLUG}.epub">📱 EPUB 电子书</a> · '
+            f'<a href="{prefix}{SLUG}.pdf">📄 PDF 排版版</a> · '
+            f'<a href="{prefix}index-en.html">🌐 English Edition</a> · '
+            '<a href="https://github.com/cluster1900/deepinfer-reader">⭐ GitHub 仓库</a> · '
+            '<a href="https://github.com/cluster1900/deepinfer-reader/releases">📦 Releases</a>'
+            '</span></div>\n'
+        )
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
 
-def reader_ui_snippet(path):
-    """为 GitHub Pages (dist/index.html) 注入交互式阅读器增强脚本（侧边目录搜索、分章/全文切换、主题切换、图片灯箱）。"""
+def reader_ui_snippet(path, lang="zh", prefix=""):
+    """为 GitHub Pages 注入交互式阅读器增强脚本（侧边目录搜索、分章/全文切换、中英切换、主题切换、图片灯箱）。"""
+    if lang == "en":
+        title = TITLE_EN
+        slug = SLUG_EN
+        toc_btn = "☰ Contents"
+        toc_tip = "Show / hide Table of Contents"
+        ch_btn = "📖 Chapter View"
+        ch_tip = "Show one chapter at a time with Previous / Next navigation"
+        sc_btn = "📜 Full Scroll"
+        sc_tip = "Expand all chapters on a single page for continuous scrolling"
+        th_btn = "🌗 Theme"
+        th_tip = "Cycle Light / Sepia / Dark theme"
+        lang_href = f"{prefix}index.html"
+        lang_btn = "🌐 中文"
+        lang_tip = "切换到中文版 (Switch to Chinese Edition)"
+        prev_lbl = "← Previous Chapter"
+        next_lbl = "Next Chapter →"
+        search_ph = "🔍 Search chapters or sections..."
+        theme_labels = "{ light: '☀️ Light', sepia: '📜 Sepia', dark: '🌙 Dark' }"
+        lb_title = "Click anywhere to close"
+    else:
+        title = TITLE_ZH
+        slug = SLUG
+        toc_btn = "☰ 目录"
+        toc_tip = "展开/收起目录"
+        ch_btn = "📖 分章阅读"
+        ch_tip = "每次只显示一章，底部带上一章/下一章导航"
+        sc_btn = "📜 全文连读"
+        sc_tip = "单页展开全书所有章节，连续滚动"
+        th_btn = "🌗 主题"
+        th_tip = "切换浅色 / 护眼 / 深色主题"
+        lang_href = f"{prefix}index-en.html"
+        lang_btn = "🌐 English"
+        lang_tip = "Switch to English Edition (切换到英文版)"
+        prev_lbl = "← 上一章"
+        next_lbl = "下一章 →"
+        search_ph = "🔍 搜索章节或小节标题..."
+        theme_labels = "{ light: '☀️ 浅色', sepia: '📜 护眼', dark: '🌙 深色' }"
+        lb_title = "点击任意处关闭"
+
     html = f"""<div class="reader-progress-bar" id="readerProgressBar"></div>
 <header class="reader-topbar" id="readerTopbar">
   <div class="reader-brand">
-    <button class="reader-btn" id="tocToggleBtn" title="展开/收起目录">☰ 目录</button>
-    <span>{TITLE}</span>
+    <button class="reader-btn" id="tocToggleBtn" title="{toc_tip}">{toc_btn}</button>
+    <span>{title}</span>
     <span class="reader-brand-badge">commit 8b16149</span>
   </div>
   <div class="reader-actions">
-    <button class="reader-btn active" id="modeChapterBtn" title="每次只显示一章，底部带上一章/下一章导航">📖 分章阅读</button>
-    <button class="reader-btn" id="modeScrollBtn" title="单页展开全书所有章节，连续滚动">📜 全文连读</button>
-    <button class="reader-btn" id="themeBtn" title="切换浅色 / 护眼 / 深色主题">🌗 主题</button>
-    <a class="reader-btn" href="{SLUG}.epub">📱 EPUB</a>
-    <a class="reader-btn" href="{SLUG}.pdf">📄 PDF</a>
+    <button class="reader-btn active" id="modeChapterBtn" title="{ch_tip}">{ch_btn}</button>
+    <button class="reader-btn" id="modeScrollBtn" title="{sc_tip}">{sc_btn}</button>
+    <button class="reader-btn" id="themeBtn" title="{th_tip}">{th_btn}</button>
+    <a class="reader-btn" href="{lang_href}" title="{lang_tip}">{lang_btn}</a>
+    <a class="reader-btn" href="{prefix}{slug}.epub">📱 EPUB</a>
+    <a class="reader-btn" href="{prefix}{slug}.pdf">📄 PDF</a>
   </div>
 </header>
-<div class="img-lightbox" id="imgLightbox" title="点击任意处关闭">
-  <img id="imgLightboxTarget" alt="放大预览" />
+<div class="img-lightbox" id="imgLightbox" title="{lb_title}">
+  <img id="imgLightboxTarget" alt="Zoomed preview" />
 </div>
 <script>
 (function() {{
@@ -182,7 +234,7 @@ def reader_ui_snippet(path):
   if (!toc) return;
   body.classList.add('has-reader-ui');
 
-  // 1. 将正文包裹进 <main class="book-main"> 并按 <h1> 切分章节 <section class="chapter-section">
+  // 1. Wrap main content in <main class="book-main"> and split by <h1> into <section class="chapter-section">
   const main = document.createElement('main');
   main.className = 'book-main';
   const keepIds = new Set(['TOC', 'readerProgressBar', 'readerTopbar', 'imgLightbox']);
@@ -210,7 +262,7 @@ def reader_ui_snippet(path):
     }}
   }}
 
-  // 2. 为每个章节底部添加“上一章 / 下一章”导航栏
+  // 2. Append Previous / Next Chapter navigation footer to each chapter
   const navFooters = [];
   chapters.forEach((ch, idx) => {{
     const footer = document.createElement('div');
@@ -219,7 +271,7 @@ def reader_ui_snippet(path):
       const prev = chapters[idx - 1];
       const btn = document.createElement('button');
       btn.className = 'chapter-nav-btn prev';
-      btn.innerHTML = '<span class="chapter-nav-label">← 上一章</span><span class="chapter-nav-title">' + prev.title + '</span>';
+      btn.innerHTML = '<span class="chapter-nav-label">{prev_lbl}</span><span class="chapter-nav-title">' + prev.title + '</span>';
       btn.onclick = () => selectChapter(idx - 1, true);
       footer.appendChild(btn);
     }}
@@ -227,7 +279,7 @@ def reader_ui_snippet(path):
       const next = chapters[idx + 1];
       const btn = document.createElement('button');
       btn.className = 'chapter-nav-btn next';
-      btn.innerHTML = '<span class="chapter-nav-label">下一章 →</span><span class="chapter-nav-title">' + next.title + '</span>';
+      btn.innerHTML = '<span class="chapter-nav-label">{next_lbl}</span><span class="chapter-nav-title">' + next.title + '</span>';
       btn.onclick = () => selectChapter(idx + 1, true);
       footer.appendChild(btn);
     }}
@@ -235,10 +287,10 @@ def reader_ui_snippet(path):
     navFooters.push(footer);
   }});
 
-  // 3. 在 TOC 顶部插入章节搜索框
+  // 3. Insert chapter search box at top of TOC
   const searchWrap = document.createElement('div');
   searchWrap.className = 'toc-search-wrap';
-  searchWrap.innerHTML = '<input type="search" class="toc-search-input" placeholder="🔍 搜索章节或小节标题..." />';
+  searchWrap.innerHTML = '<input type="search" class="toc-search-input" placeholder="{search_ph}" />';
   toc.insertBefore(searchWrap, toc.firstChild);
   const searchInput = searchWrap.querySelector('input');
   searchInput.addEventListener('input', () => {{
@@ -249,7 +301,7 @@ def reader_ui_snippet(path):
     }});
   }});
 
-  // 4. 建立元素 ID 到章节索引的映射，支持点击目录自动切换到对应章
+  // 4. Map element IDs to chapter index
   const idToChapter = new Map();
   chapters.forEach((ch, idx) => {{
     if (ch.id) idToChapter.set(ch.id, idx);
@@ -319,7 +371,6 @@ def reader_ui_snippet(path):
     }}
   }});
 
-  // 根据初始 URL Hash 定位章节
   const initHash = decodeURIComponent(location.hash.replace(/^#/, ''));
   if (initHash && idToChapter.has(initHash)) {{
     activeChapter = idToChapter.get(initHash);
@@ -330,15 +381,15 @@ def reader_ui_snippet(path):
     if (el) setTimeout(() => el.scrollIntoView(), 60);
   }}
 
-  // 5. 主题切换（浅色 -> 护眼羊皮纸 -> 深色）
+  // 5. Theme toggle (Light -> Sepia -> Dark)
   const themes = ['light', 'sepia', 'dark'];
-  const themeLabels = {{ light: '☀️ 浅色', sepia: '📜 护眼', dark: '🌙 深色' }};
+  const themeLabels = {theme_labels};
   let curTheme = localStorage.getItem('deepinfer_reader_theme') || 'light';
   function applyTheme(t) {{
     curTheme = t;
     document.documentElement.setAttribute('data-theme', t);
     localStorage.setItem('deepinfer_reader_theme', t);
-    document.getElementById('themeBtn').textContent = themeLabels[t] || '🌗 主题';
+    document.getElementById('themeBtn').textContent = themeLabels[t] || '{th_btn}';
   }}
   applyTheme(curTheme);
   document.getElementById('themeBtn').onclick = () => {{
@@ -346,7 +397,7 @@ def reader_ui_snippet(path):
     applyTheme(next);
   }};
 
-  // 6. 移动端目录抽屉切换
+  // 6. Sidebar toggle
   document.getElementById('tocToggleBtn').onclick = () => {{
     if (window.innerWidth < 1024) {{
       body.classList.toggle('toc-drawer-open');
@@ -357,7 +408,7 @@ def reader_ui_snippet(path):
     }}
   }};
 
-  // 7. 阅读进度条与滚动监听
+  // 7. Reading progress bar
   const bar = document.getElementById('readerProgressBar');
   window.addEventListener('scroll', () => {{
     const docH = document.documentElement.scrollHeight - window.innerHeight;
@@ -365,7 +416,7 @@ def reader_ui_snippet(path):
     bar.style.width = pct + '%';
   }}, {{ passive: true }});
 
-  // 8. 点击任意图表放大预览（Lightbox）
+  // 8. Click-to-zoom Lightbox for figures
   const lb = document.getElementById('imgLightbox');
   const lbImg = document.getElementById('imgLightboxTarget');
   main.querySelectorAll('figure img, img.mermaid-figure').forEach(img => {{
@@ -385,6 +436,66 @@ def reader_ui_snippet(path):
         f.write(html)
 
 
+def build_edition(mer, src_dir, work_sub, dist, chrome, skip_pdf=False, lang="zh"):
+    md_dir = os.path.join(work_sub, "md")
+    if os.path.isdir(md_dir):
+        shutil.rmtree(md_dir)
+    os.makedirs(md_dir, exist_ok=True)
+
+    before_count = mer.count
+    src = []
+    for path in chapters(src_dir):
+        dest = os.path.join(md_dir, os.path.basename(path))
+        mer.transform(path, dest)
+        src.append(dest)
+    print(f"mermaid [{lang}]: {mer.count - before_count} 张图")
+
+    title = TITLE_EN if lang == "en" else TITLE_ZH
+    slug = SLUG_EN if lang == "en" else SLUG
+    html_name = "index-en.html" if lang == "en" else "index.html"
+    meta_lang = "en" if lang == "en" else "zh-CN"
+
+    # Pandoc resolves relative image paths against the working directory / resource-path;
+    # include work (where mermaid/ lives) as well as work_sub, src_dir, ASSETS, BASE.
+    work_root = os.path.dirname(mer.out)
+    resource = ":".join([work_root, work_sub, src_dir, ASSETS, BASE])
+    common = ["-f", MD_FORMAT, "--toc", "--toc-depth=2",
+              "--metadata", f"title={title}", "--metadata", f"author={AUTHOR}",
+              "--metadata", f"lang={meta_lang}", "--resource-path", resource]
+    css = os.path.join(ASSETS, "style.css")
+
+    snippet = os.path.join(work_sub, "downloads.html")
+    ui_snippet = os.path.join(work_sub, "reader_ui.html")
+    downloads_snippet(snippet, lang=lang, prefix="")
+    reader_ui_snippet(ui_snippet, lang=lang, prefix="")
+
+    run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources", "--css", css,
+         "--include-before-body", snippet, "--include-after-body", ui_snippet,
+         "-o", os.path.join(dist, html_name)])
+
+    if lang == "en":
+        # Also create dist/en/index.html with "../" asset links for clean /en/ URL support
+        en_dir = os.path.join(dist, "en")
+        os.makedirs(en_dir, exist_ok=True)
+        snippet_sub = os.path.join(work_sub, "downloads_sub.html")
+        ui_snippet_sub = os.path.join(work_sub, "reader_ui_sub.html")
+        downloads_snippet(snippet_sub, lang="en", prefix="../")
+        reader_ui_snippet(ui_snippet_sub, lang="en", prefix="../")
+        run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources", "--css", css,
+             "--include-before-body", snippet_sub, "--include-after-body", ui_snippet_sub,
+             "-o", os.path.join(en_dir, "index.html")])
+
+    epub = os.path.join(dist, f"{slug}.epub")
+    run(["pandoc", *src, *common, "--mathml", "--split-level=1", "--css", css, "-o", epub])
+    if not skip_pdf:
+        print_html = os.path.join(work_sub, "print.html")
+        run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources",
+             "--css", css, "--css", os.path.join(ASSETS, "print.css"), "-o", print_html])
+        run(["node", os.path.join(BASE, "scripts", "html2pdf.mjs"), print_html,
+             os.path.join(dist, f"{slug}.pdf"), title],
+            env={**os.environ, "CHROME_PATH": chrome})
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=os.path.join(BASE, "chapters"))
@@ -402,40 +513,15 @@ def main():
         shutil.rmtree(dist)
     os.makedirs(dist)
     work = os.path.join(BASE, "build", "work")
-    if os.path.isdir(os.path.join(work, "md")):
-        shutil.rmtree(os.path.join(work, "md"))
-    os.makedirs(os.path.join(work, "md"), exist_ok=True)
+    os.makedirs(work, exist_ok=True)
 
     mer = Mermaid(work, chrome)
-    src = []
-    for path in chapters(src_dir):
-        dest = os.path.join(work, "md", os.path.basename(path))
-        mer.transform(path, dest)
-        src.append(dest)
-    print(f"mermaid: {mer.count} 张图")
+    build_edition(mer, src_dir, os.path.join(work, "zh"), dist, chrome, skip_pdf=args.skip_pdf, lang="zh")
 
-    resource = ":".join([work, src_dir, ASSETS, BASE])
-    common = ["-f", MD_FORMAT, "--toc", "--toc-depth=2",
-              "--metadata", f"title={TITLE}", "--metadata", f"author={AUTHOR}",
-              "--metadata", "lang=zh-CN", "--resource-path", resource]
-    css = os.path.join(ASSETS, "style.css")
-    snippet = os.path.join(work, "downloads.html")
-    ui_snippet = os.path.join(work, "reader_ui.html")
-    downloads_snippet(snippet)
-    reader_ui_snippet(ui_snippet)
+    src_en_dir = os.path.join(BASE, "chapters_en")
+    if src_dir == os.path.join(BASE, "chapters") and os.path.isdir(src_en_dir) and any(f.endswith(".md") for f in os.listdir(src_en_dir)):
+        build_edition(mer, src_en_dir, os.path.join(work, "en"), dist, chrome, skip_pdf=args.skip_pdf, lang="en")
 
-    run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources", "--css", css,
-         "--include-before-body", snippet, "--include-after-body", ui_snippet,
-         "-o", os.path.join(dist, "index.html")])
-    epub = os.path.join(dist, f"{SLUG}.epub")
-    run(["pandoc", *src, *common, "--mathml", "--split-level=1", "--css", css, "-o", epub])
-    if not args.skip_pdf:
-        print_html = os.path.join(work, "print.html")
-        run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources",
-             "--css", css, "--css", os.path.join(ASSETS, "print.css"), "-o", print_html])
-        run(["node", os.path.join(BASE, "scripts", "html2pdf.mjs"), print_html,
-             os.path.join(dist, f"{SLUG}.pdf"), TITLE],
-            env={**os.environ, "CHROME_PATH": chrome})
     open(os.path.join(dist, ".nojekyll"), "w").close()
     print("OK:", ", ".join(sorted(os.listdir(dist))))
 

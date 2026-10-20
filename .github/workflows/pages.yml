@@ -50,15 +50,17 @@ jobs:
           python3 examples/quickstart.py
       - name: Figure scripts run on CPU
         run: python3 scripts/figures/make_plots.py --out build/figcheck
-      - name: Build HTML + EPUB + PDF
+      - name: Build HTML + EPUB + PDF (ZH & EN)
         run: python3 build.py
       - name: Check outputs
         run: |
           set -euo pipefail
           python3 scripts/check_outputs.py dist --min-figures 28 --expect "DeepInfer 源码解读" --expect 抢占 --expect 变长验证
           epubcheck dist/deepinfer-reader.epub
+          epubcheck dist/deepinfer-reader-en.epub
           mkdir -p build/preview
           pdftoppm -r 80 -png -f 1 -l 4 dist/deepinfer-reader.pdf build/preview/page
+          pdftoppm -r 80 -png -f 1 -l 4 dist/deepinfer-reader-en.pdf build/preview/page-en
       - name: Upload EPUB + PDF + previews (for review)
         uses: actions/upload-artifact@v4
         with:
@@ -66,6 +68,8 @@ jobs:
           path: |
             dist/deepinfer-reader.epub
             dist/deepinfer-reader.pdf
+            dist/deepinfer-reader-en.epub
+            dist/deepinfer-reader-en.pdf
             build/preview/
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
