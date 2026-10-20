@@ -145,9 +145,11 @@ def downloads_snippet(path, lang="zh", prefix=""):
             '<span>📚 <b>DeepInfer Source Code Walkthrough &amp; From 0 to 1</b> (Verified line-by-line against commit <code>8b16149</code> · Companion CPU engine <code>minidi</code>)</span>'
             '<span class="downloads-btns">'
             '<a class="star-cta" href="https://github.com/cluster1900/deepinfer-reader" target="_blank" rel="noopener">⭐ Star on GitHub</a>'
-            f'<a class="lang-switch-link" href="{prefix}index.html">🌐 中文版</a>'
+            f'<a class="lang-switch-link" href="{prefix}index-zh.html">🌐 中文版</a>'
             f'<a href="{prefix}{SLUG_EN}.epub">📱 EPUB (EN)</a>'
             f'<a href="{prefix}{SLUG_EN}.pdf">📄 PDF (EN)</a>'
+            f'<a href="{prefix}{SLUG}.epub" title="下载中文版 EPUB">📱 EPUB (中文)</a>'
+            f'<a href="{prefix}{SLUG}.pdf" title="下载中文版 PDF">📄 PDF (中文)</a>'
             '<a href="https://github.com/cluster1900/deepinfer-reader/releases" target="_blank" rel="noopener">📦 Releases</a>'
             '</span></div>\n'
         )
@@ -157,7 +159,7 @@ def downloads_snippet(path, lang="zh", prefix=""):
             '<span>📚 <b>DeepInfer 源码解读与从 0 到 1</b>（基于 commit <code>8b16149</code> 逐行核对 · 配套 CPU 教学引擎 <code>minidi</code>）</span>'
             '<span class="downloads-btns">'
             '<a class="star-cta" href="https://github.com/cluster1900/deepinfer-reader" target="_blank" rel="noopener">⭐ Star 我的 GitHub</a>'
-            f'<a class="lang-switch-link" href="{prefix}index-en.html">🌐 English Edition</a>'
+            f'<a class="lang-switch-link" href="{prefix}index.html">🌐 English Edition</a>'
             f'<a href="{prefix}{SLUG}.epub">📱 EPUB 电子书</a>'
             f'<a href="{prefix}{SLUG}.pdf">📄 PDF 排版版</a>'
             '<a href="https://github.com/cluster1900/deepinfer-reader/releases" target="_blank" rel="noopener">📦 Releases</a>'
@@ -180,7 +182,7 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
         sc_tip = "Expand all chapters on a single page for continuous scrolling"
         th_btn = "🌗 Theme"
         th_tip = "Cycle Light / Sepia / Dark theme"
-        lang_href = f"{prefix}index.html"
+        lang_href = f"{prefix}index-zh.html"
         lang_btn = "🌐 中文"
         lang_tip = "切换到中文版，保持当前章节 (Switch to Chinese Edition)"
         star_btn = "⭐ Star on GitHub"
@@ -201,7 +203,7 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
         sc_tip = "单页展开全书所有章节，连续滚动"
         th_btn = "🌗 主题"
         th_tip = "切换浅色 / 护眼 / 深色主题"
-        lang_href = f"{prefix}index-en.html"
+        lang_href = f"{prefix}index.html"
         lang_btn = "🌐 English"
         lang_tip = "Switch to English Edition, keeping current chapter (切换到英文版)"
         star_btn = "⭐ Star 我的 GitHub"
@@ -478,7 +480,7 @@ def reader_ui_snippet(path, lang="zh", prefix=""):
         f.write(html)
 
 
-def build_edition(mer, src_dir, work_sub, dist, chrome, skip_pdf=False, lang="zh"):
+def build_edition(mer, src_dir, work_sub, dist, chrome, skip_pdf=False, lang="zh", is_default=False):
     md_dir = os.path.join(work_sub, "md")
     if os.path.isdir(md_dir):
         shutil.rmtree(md_dir)
@@ -494,7 +496,7 @@ def build_edition(mer, src_dir, work_sub, dist, chrome, skip_pdf=False, lang="zh
 
     title = TITLE_EN if lang == "en" else TITLE_ZH
     slug = SLUG_EN if lang == "en" else SLUG
-    html_name = "index-en.html" if lang == "en" else "index.html"
+    html_name = "index.html" if is_default else (f"index-{lang}.html")
     meta_lang = "en" if lang == "en" else "zh-CN"
 
     # Pandoc resolves relative image paths against the working directory / resource-path;
@@ -511,21 +513,24 @@ def build_edition(mer, src_dir, work_sub, dist, chrome, skip_pdf=False, lang="zh
     downloads_snippet(snippet, lang=lang, prefix="")
     reader_ui_snippet(ui_snippet, lang=lang, prefix="")
 
+    out_html = os.path.join(dist, html_name)
     run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources", "--css", css,
          "--include-before-body", snippet, "--include-after-body", ui_snippet,
-         "-o", os.path.join(dist, html_name)])
+         "-o", out_html])
 
-    if lang == "en":
-        # Also create dist/en/index.html with "../" asset links for clean /en/ URL support
-        en_dir = os.path.join(dist, "en")
-        os.makedirs(en_dir, exist_ok=True)
-        snippet_sub = os.path.join(work_sub, "downloads_sub.html")
-        ui_snippet_sub = os.path.join(work_sub, "reader_ui_sub.html")
-        downloads_snippet(snippet_sub, lang="en", prefix="../")
-        reader_ui_snippet(ui_snippet_sub, lang="en", prefix="../")
-        run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources", "--css", css,
-             "--include-before-body", snippet_sub, "--include-after-body", ui_snippet_sub,
-             "-o", os.path.join(en_dir, "index.html")])
+    if is_default and lang == "en":
+        shutil.copyfile(out_html, os.path.join(dist, "index-en.html"))
+
+    # Also create dist/<lang>/index.html with "../" asset links for clean /en/ and /zh/ URL support
+    sub_dir = os.path.join(dist, lang)
+    os.makedirs(sub_dir, exist_ok=True)
+    snippet_sub = os.path.join(work_sub, "downloads_sub.html")
+    ui_snippet_sub = os.path.join(work_sub, "reader_ui_sub.html")
+    downloads_snippet(snippet_sub, lang=lang, prefix="../")
+    reader_ui_snippet(ui_snippet_sub, lang=lang, prefix="../")
+    run(["pandoc", *src, *common, "-s", "--mathml", "--embed-resources", "--css", css,
+         "--include-before-body", snippet_sub, "--include-after-body", ui_snippet_sub,
+         "-o", os.path.join(sub_dir, "index.html")])
 
     epub = os.path.join(dist, f"{slug}.epub")
     run(["pandoc", *src, *common, "--mathml", "--split-level=1", "--css", css, "-o", epub])
@@ -558,11 +563,17 @@ def main():
     os.makedirs(work, exist_ok=True)
 
     mer = Mermaid(work, chrome)
-    build_edition(mer, src_dir, os.path.join(work, "zh"), dist, chrome, skip_pdf=args.skip_pdf, lang="zh")
-
     src_en_dir = os.path.join(BASE, "chapters_en")
-    if src_dir == os.path.join(BASE, "chapters") and os.path.isdir(src_en_dir) and any(f.endswith(".md") for f in os.listdir(src_en_dir)):
-        build_edition(mer, src_en_dir, os.path.join(work, "en"), dist, chrome, skip_pdf=args.skip_pdf, lang="en")
+    has_bilingual = (src_dir == os.path.join(BASE, "chapters") and os.path.isdir(src_en_dir)
+                     and any(f.endswith(".md") for f in os.listdir(src_en_dir)))
+
+    if has_bilingual:
+        # English is the default landing page (dist/index.html + dist/index-en.html + dist/en/index.html)
+        build_edition(mer, src_en_dir, os.path.join(work, "en"), dist, chrome, skip_pdf=args.skip_pdf, lang="en", is_default=True)
+        # Chinese is at dist/index-zh.html + dist/zh/index.html
+        build_edition(mer, src_dir, os.path.join(work, "zh"), dist, chrome, skip_pdf=args.skip_pdf, lang="zh", is_default=False)
+    else:
+        build_edition(mer, src_dir, os.path.join(work, "zh"), dist, chrome, skip_pdf=args.skip_pdf, lang="zh", is_default=True)
 
     open(os.path.join(dist, ".nojekyll"), "w").close()
     print("OK:", ", ".join(sorted(os.listdir(dist))))
