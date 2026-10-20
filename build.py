@@ -37,7 +37,7 @@ import tempfile
 BASE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(BASE, "assets")
 TITLE = "DeepInfer 源码解读与从 0 到 1"
-AUTHOR = "cluster1900"
+AUTHOR = "Hawk Wu"
 SLUG = "deepinfer-reader"
 MD_FORMAT = "markdown-blank_before_blockquote+lists_without_preceding_blankline"
 FENCE_OPEN = re.compile(r"^(?P<fence>`{3,}|~{3,})\s*(?P<info>mermaid|\{[^}]*\.mermaid\b[^}]*\})\s*$")

@@ -1,5 +1,7 @@
 # DeepInfer 源码解读与从 0 到 1
 
+作者：**Hawk Wu**
+
 [在线阅读](https://cluster1900.github.io/deepinfer-reader/) · [下载 EPUB](https://cluster1900.github.io/deepinfer-reader/deepinfer-reader.epub) · [下载 PDF](https://cluster1900.github.io/deepinfer-reader/deepinfer-reader.pdf) · [Releases（EPUB / PDF / 离线网页包）](https://github.com/cluster1900/deepinfer-reader/releases)
 
 一本中文书，分两部分：
