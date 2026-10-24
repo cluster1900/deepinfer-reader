@@ -18,7 +18,7 @@
   <a href="https://github.com/cluster1900/deepinfer-reader/releases"><b>📦 GitHub Releases</b></a>
 </p>
 
-这是一本深入剖析 DeepSeek 开源推理框架 **[DeepInfer](https://github.com/deepseek-ai/DeepInfer)**（固定提交 `8b16149741a4935e1dec8cea27853f273b374c5b`）、并带你用纯 Python + NumPy 从零手写同构教学引擎 `minidi` 的实战技术书（提供**英文版** `chapters_en/` 与**中文版** `chapters/` 完整双语版本）。
+这是一本深入剖析 DeepSeek 开源推理框架 **[DeepInfer](https://github.com/deepseek-ai/DeepInfer)**（固定提交 `9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`）、并带你用纯 Python + NumPy 从零手写同构教学引擎 `minidi` 的实战技术书（提供**英文版** `chapters_en/` 与**中文版** `chapters/` 完整双语版本）。
 
 全书遵循 **“痛点直觉 → 小数字图解推演 → 真实 C++/Python 源码逐行对照 → 亲手写代码实验验证”** 的认知节奏，彻底讲透现代大模型生产级推理引擎的核心机制。
 

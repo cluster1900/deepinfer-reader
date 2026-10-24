@@ -1,5 +1,12 @@
 # 更新日志 (Changelog)
 
+## v0.2.1（2026-10-24）
+
+- **源码基线从 `8b16149` 更新到 `9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`**（2026-10-21，上游 #157），中英两版同步：
+  - `8b16149`：官方 Q&A 以 PDF 首发；`774ce24`：改为英文 `doc/inference_deployment_qa.md`、删除 PDF、新增两张配图。全书“官方 Q&A”出处改指 Markdown 版，行号引用按新文件重新对齐（第 4 章 L161–L191、L189–L191；第 7 章 L55–L59、L95–L103）。
+  - `9bd9cf2`：`vendor/DeepEP` `93eb6eb` → `f6aa38f`，`build_vendor.sh` 去掉 SSH→HTTPS 重写；第 1 章子模块表与说明已更新。其余 5 个子模块锁定提交未变。
+  - 第 7 章补充 EPLB 拓扑（EP4DP4 / EP2DP2）、冗余专家取整规则与 Wide-EP 访存说明。
+
 ## v0.2.0（2026-10-20）
 
 - **新增完整英文版（English Edition，`chapters_en/`）**：

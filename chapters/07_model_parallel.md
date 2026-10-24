@@ -111,7 +111,7 @@ flowchart TB
 
 ![图 7-3　EPLB 负载均衡效果对比：16 个逻辑专家在 4 张卡上，增加 4 个冗余副本并按步峰值贪心放置后，moe_lb（最慢卡/均值）从 1.38 降至 1.07（由 minidi/eplb.py 生成）](images/plots/ch07_eplb.png)
 
-在线上生产环境中（据官方 Q&A），Prefill 实例每卡配置 4 个冗余专家，统计窗口 100 步、每 1000 步通过 `eplb/shuffle.py`（基于 NCCL P2P 或单机 IPC 共享内存）重排一次权重，实测不均衡度 `moe_lb` 低至 **1.045~1.074**；Decode 实例每卡配置 1 个冗余专家，每 10,000 步重排一次，实测 `moe_lb = 1.090`。
+在线上生产环境中（据官方 Q&A），Prefill 实例每卡配置 4 个冗余专家，统计窗口 100 步、每 1000 步通过 `eplb/shuffle.py`（基于 NCCL P2P 或单机 IPC 共享内存）重排一次权重，实测不均衡度 `moe_lb` 低至 **1.045~1.074**；Decode 实例每卡配置 1 个冗余专家，每 10,000 步重排一次，实测 `moe_lb = 1.090`。更细一点（官方 Q&A L95–L103）：Prefill 的 1.074 对应 EP4DP4、1.045 对应 EP2DP2，冗余专家数会向上取整，使专家总数是 `ep_size` 的整数倍；Decode 的统计窗口是 1,000 步，在 EP64 下每卡 1 个冗余专家取整后为每卡 7 个专家（不含共享专家）。官方 Q&A 同时说明 Wide-EP 能显著降低 MoE 专家部分每步的访存量，并在 `doc/images/wide_ep_decode_pareto.png` 给出了 EP8 与 EP64 的 decode 吞吐对比（L55–L59）。
 
 ---
 

@@ -90,7 +90,7 @@ flowchart TB
 
 DeepInfer 仓库结构清晰，分为 **C++ 引擎核心（`csrc/`）**、**Python 运行时与模型层（`deepinfer/`）**、**硬件拓扑工具（`deep_cluster/`）** 和 **外部高性能算子库（`vendor/`）** 四大块：
 
-```{.mermaid caption="图 1-2　DeepInfer 仓库目录地图（commit 8b16149）"}
+```{.mermaid caption="图 1-2　DeepInfer 仓库目录地图（commit 9bd9cf2）"}
 flowchart LR
   subgraph Core["1. 引擎与运行时骨架"]
     csrc["csrc/engine/（C++ 调度核心）<br/>scheduler · block_manager<br/>sequence · zos · mtp_varlen"]
@@ -126,8 +126,10 @@ flowchart LR
 | --- | --- | --- |
 | `FlashMLA` | `2e5429f` | 多头潜在注意力（MLA）与稀疏 Top-$k$ 注意力的高性能 CUDA kernel |
 | `DeepGEMM` / `DeepGEMM-Ascend` | `1fc9c66` / `3a35326` | FP8 / BF16 矩阵乘与 MoE 分组 GEMM（NVIDIA 与昇腾双后端） |
-| `DeepEP` / `DeepEP-Ascend` | `93eb6eb` / `3b25377` | MoE 跨卡 token 分发（dispatch）与合并（combine），兼供 CP 的 `BucketBuffer` |
+| `DeepEP` / `DeepEP-Ascend` | `f6aa38f` / `3b25377` | MoE 跨卡 token 分发（dispatch）与合并（combine），兼供 CP 的 `BucketBuffer` |
 | `DeepSelect` | `bfa4507` | 稀疏注意力（DSA / NSA）中的快速 Top-$k$ 块选择算子 |
+
+> **基线更新说明（`9bd9cf2`，上游 #157）**：`vendor/DeepEP` 从 `93eb6eb` 升到 `f6aa38f`。两者之间 DeepEP 只有两个提交：`b5a33ee`（删除格式化与 lint 检查）和 `f6aa38f`（DeepJIT 子模块改用 HTTPS 地址），不涉及 dispatch / combine 算子逻辑，所以本书对 EP 通信的分析不受影响。由于 DeepEP 已经记录 HTTPS 形式的 DeepJIT URL，`scripts/build_vendor.sh` 同步删掉了 `GIT_REWRITE=(-c url."https://github.com/".insteadOf="git@github.com:")`，两处 `submodule update --init` 改为直接执行——没有 SSH key 的构建机也能拉取全部子模块。
 
 ---
 

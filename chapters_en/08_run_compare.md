@@ -108,7 +108,7 @@ When reading or running `examples/benchmark.py` (and `examples/README.md`) to me
 
 Having walked through the entire codebase in Part I, we can now step back and compare **DeepInfer** against the community's two leading general-purpose inference frameworks—**vLLM** and **SGLang**—from an architect's perspective (all entries in the DeepInfer column are verified directly against the source code in this book; the vLLM and SGLang columns reflect their respective public architectures):
 
-| Architectural Dimension | DeepInfer (commit `8b16149`) | vLLM (V1 Architecture) | SGLang |
+| Architectural Dimension | DeepInfer (commit `9bd9cf2`) | vLLM (V1 Architecture) | SGLang |
 | --- | --- | --- | --- |
 | **Core Design Goal** | **Extreme single-model specialization**: purpose-built for DeepSeek-V4.1-Flash and large-scale Wide-EP clusters | **Universal ecosystem foundation**: supports 100+ model architectures and a wide range of hardware backends | **General high performance & complex control flow**: balances multi-model support, Radix caching, and structured generation |
 | **Scheduler Implementation Language** | **Pure C++ (`csrc/engine/scheduler.hpp`)**, releasing the GIL for microsecond-level block management and preemption | Primarily Python (assisted by selected C++/Cython data structures) | Primarily Python (running in an isolated scheduler process/thread) |
