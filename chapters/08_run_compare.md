@@ -108,7 +108,7 @@ flowchart LR
 
 走完了第一部分的全部源码，我们现在可以站在架构师的视角，把 **DeepInfer** 与社区最主流的两个通用推理框架 **vLLM**、**SGLang** 做一个全方位对比（其中 DeepInfer 列全部经本书源码实证，vLLM 与 SGLang 列基于各自公开架构设计）：
 
-| 架构维度 | DeepInfer（commit `8b16149`） | vLLM（V1 架构） | SGLang |
+| 架构维度 | DeepInfer（commit `9bd9cf2`） | vLLM（V1 架构） | SGLang |
 | --- | --- | --- | --- |
 | **核心设计目标** | **单模型极致特化**：专为 DeepSeek-V4.1-Flash 与大规模 Wide-EP 集群打造 | **高通用性生态底座**：支持上百种模型架构与广泛的硬件后端 | **通用高性能与复杂控制流**：兼顾多模型支持、Radix 缓存与结构化生成 |
 | **调度器实现语言** | **纯 C++（`csrc/engine/scheduler.hpp`）**，释放 GIL，微秒级完成块管理与抢占 | Python 为主（配合部分 C++/Cython 辅助结构） | Python 为主（运行于独立调度进程/线程） |

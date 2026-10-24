@@ -106,14 +106,14 @@ flowchart TB
 - 这正是**压缩状态 Ring** 取 `compress_ratio + 5`（显式减 1）以及 **DFlash 草稿层 SWA** 取 `128 + 5 = 133`（`get_kv_index.py` L183）的原因！第 15 章我们会用 `minidi` 画出槽位覆盖图，直观展示少 1 个槽位就会发生历史覆盖。
 
 ### 第二步：为什么主模型 SWA Ring 不减这 1，非要取 `128 + 6 = 134`？
-因为主模型的 SWA 环形缓冲区除了应付单步前向和投机回退，还要承担**按 128 边界异步快照落盘（KVCache Store）**与**预填充历史加载**三项额外任务（见官方 Q&A L189–L235 及源码）：
+因为主模型的 SWA 环形缓冲区除了应付单步前向和投机回退，还要承担**按 128 边界异步快照落盘（KVCache Store）**与**预填充历史加载**三项额外任务（见官方 Q&A L161–L191 及源码）：
 
 1. **Decode 跨 128 边界时的状态快照（`llm_engine.py` L930 `do_copy_state` 与 `state_cache.py` L44 `select_state_slice`）**：
    线上系统只在序列长度跨过 **128 的整数倍**（`KVSTORE_GRAIN = 128`）时，才会把当前请求的 SWA 状态拷贝出来落盘。设想最极端的情况：某条请求在本步之前已经缓存了 $127$ 个 token（位置 $0 \dots 126$），本步 decode 一口气写入了 $k = 6$ 个 token（位置 $127 \dots 132$），跨过了 $128$ 的边界！
    在本步结束时，`do_copy_state` 触发，需要从环形缓冲区里完整切出截至位置 $127$ 的那 **整整 128 个历史槽位**（位置 $0 \dots 127$）去落盘；而此时位置 $128 \dots 132$（共 5 个超调位置）也已经写进了同一个环形缓冲区里！如果还要留 1 个对齐安全位或算上本步写入的全部 6 个偏移，环形缓冲区拥有 $128 + 6 = 134$ 个槽位，就能保证无论单步 6 个 token 落在 128 边界的哪个相位上，边界前完整的 128 个 token 窗口都原封不动地躺在 Ring 里等待拷贝！
 2. **Prefill 历史窗口加载（`prepare_tensor_input_v4.cpp` L378–L383 `make_swa_block_load_plan`）**：
    当新 chunk 开始前需要把历史 SWA 状态载入 Ring 时，加载计划直接读取 `[history_end - 128, history_end)` 整整 128 个严格先前的历史位置，再加上本步最多 6 个回退余量，正好占满 $128 + 6 = 134$ 个槽位。
-3. **YoCo 预填充截断与前缀缓存命中上限（`prepare_tensor_input_v4.cpp` L355 及官方 Q&A L231–L235）**：
+3. **YoCo 预填充截断与前缀缓存命中上限（`prepare_tensor_input_v4.cpp` L355 及官方 Q&A L189–L191）**：
    为了确保 YoCo 后半段层和 SWA Bounded Replay 有完整的窗口可用，未命中的尾部保留长度固定为 `window_size + max_backtracking_tokens = 128 + 6 = 134`。
 
 另外，在 `StateBlock`（`cache_engine.py` L221–L241）内部，槽位还被精心地划分为前半段 **Stored 区**（前 20 层 Producer SWA，每请求 `20 × 134 × 528 B ≈ 1.35 MiB`，需要跨请求落盘复用）和后半段 **Dropped 区**（YoCo Consumer 层的 SWA 与压缩状态，可通过重算最后 128 个 token 恢复，无需落盘）。

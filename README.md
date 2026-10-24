@@ -18,7 +18,7 @@
   <a href="https://github.com/cluster1900/deepinfer-reader/releases"><b>📦 GitHub Releases</b></a>
 </p>
 
-A hands-on, code-first technical book that deconstructs DeepSeek's open-source production LLM inference engine **[DeepInfer](https://github.com/deepseek-ai/DeepInfer)** (verified line-by-line against commit `8b16149741a4935e1dec8cea27853f273b374c5b`) and guides you through building an isomorphic teaching engine, `minidi`, from scratch in pure Python + NumPy. Available in both **English (`chapters_en/`)** and **Chinese (`chapters/`)**.
+A hands-on, code-first technical book that deconstructs DeepSeek's open-source production LLM inference engine **[DeepInfer](https://github.com/deepseek-ai/DeepInfer)** (verified line-by-line against commit `9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`) and guides you through building an isomorphic teaching engine, `minidi`, from scratch in pure Python + NumPy. Available in both **English (`chapters_en/`)** and **Chinese (`chapters/`)**.
 
 Every chapter follows a four-step pedagogical rhythm: **Real-World Pain Point → Small-Number Visual Walkthrough → Line-by-Line C++/Python Source Verification → Hands-On Code & Failure Post-Mortems**.
 

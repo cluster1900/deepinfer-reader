@@ -90,7 +90,7 @@ Understanding Figure 1-1 unlocks three architectural mysteries in the source cod
 
 DeepInfer's repository is cleanly organized into four major areas: the **C++ Engine Core (`csrc/`)**, the **Python Runtime & Model Layer (`deepinfer/`)**, **Hardware Topology Utilities (`deep_cluster/`)**, and **External High-Performance Kernel Libraries (`vendor/`)**:
 
-```{.mermaid caption="Figure 1-2  DeepInfer Repository Directory Map (commit 8b16149)"}
+```{.mermaid caption="Figure 1-2  DeepInfer Repository Directory Map (commit 9bd9cf2)"}
 flowchart LR
   subgraph Core["1. Engine & Runtime Backbone"]
     csrc["csrc/engine/ (C++ Scheduling Core)<br/>scheduler · block_manager<br/>sequence · zos · mtp_varlen"]
@@ -126,8 +126,10 @@ The six `vendor/` submodules pinned at the current commit and their roles are su
 | --- | --- | --- |
 | `FlashMLA` | `2e5429f` | High-performance CUDA kernels for Multi-head Latent Attention (MLA) and sparse Top-$k$ attention |
 | `DeepGEMM` / `DeepGEMM-Ascend` | `1fc9c66` / `3a35326` | FP8 / BF16 matrix multiplication and MoE grouped GEMM (dual backends for NVIDIA and Ascend) |
-| `DeepEP` / `DeepEP-Ascend` | `93eb6eb` / `3b25377` | Cross-GPU MoE token dispatch and combine collectives, plus `BucketBuffer` for Context Parallelism (CP) |
+| `DeepEP` / `DeepEP-Ascend` | `f6aa38f` / `3b25377` | Cross-GPU MoE token dispatch and combine collectives, plus `BucketBuffer` for Context Parallelism (CP) |
 | `DeepSelect` | `bfa4507` | Fast Top-$k$ block selection kernel for sparse attention (DSA / NSA) |
+
+> **Baseline update note (`9bd9cf2`, upstream #157)**: `vendor/DeepEP` moves from `93eb6eb` to `f6aa38f`. DeepEP has only two commits in between: `b5a33ee` (removes formatting and lint checks) and `f6aa38f` (switches the DeepJIT submodule to an HTTPS URL). Neither touches the dispatch / combine kernels, so this book's analysis of EP communication is unaffected. Because DeepEP now records an HTTPS DeepJIT URL, `scripts/build_vendor.sh` drops `GIT_REWRITE=(-c url."https://github.com/".insteadOf="git@github.com:")` and runs both `submodule update --init` calls directly, so build machines without an SSH key can still fetch every submodule.
 
 ---
 

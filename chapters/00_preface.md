@@ -50,10 +50,10 @@ flowchart TB
 
 ## 0.3 版本基准与证据约定
 
-本书解读的 DeepInfer 源码固定在官方仓库 `https://github.com/deepseek-ai/DeepInfer` 的提交 **`8b16149741a4935e1dec8cea27853f273b374c5b`**（2026-10-20，`update Q&A documentation`）。书中所有文件路径、函数名、行号和默认值均在此提交上逐行核对。
+本书解读的 DeepInfer 源码固定在官方仓库 `https://github.com/deepseek-ai/DeepInfer` 的提交 **`9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`**（2026-10-21，`Bump DeepEP to f6aa38fe and drop the SSH->HTTPS rewrite (#157)`）。书中所有文件路径、函数名、行号和默认值均在此提交上逐行核对。
 
 - **行号标记**：形如 `scheduler.hpp L275` 指 `csrc/engine/scheduler.hpp` 第 275 行；省略目录前缀时按当前章节上下文补全。
-- **官方 Q&A**：仓库自带的 `doc/DeepSeek V4.1 Flash 推理部署 Q&A.pdf`（书中简称“官方 Q&A”）披露了大量线上生产部署细节（如 E/P/D 分离配比、3FS 分布式 KV 存储、128 粒度落盘原因等）。凡引用自该文档的数据与事实，书中均明确标注“官方 Q&A”。
+- **官方 Q&A**：仓库自带的 `doc/inference_deployment_qa.md`（书中简称“官方 Q&A”；上游在 `8b16149` 以 PDF `doc/DeepSeek V4.1 Flash 推理部署 Q&A.pdf` 首发，`774ce24` 改为英文 Markdown 并删除 PDF，同时新增 `doc/images/architecture_overview.png`、`wide_ep_decode_pareto.png`）披露了大量线上生产部署细节（如 E/P/D 分离配比、3FS 分布式 KV 存储、128 粒度落盘原因等）。凡引用自该文档的数据与事实，书中均明确标注“官方 Q&A”。
 - **实验边界**：DeepInfer 生产运行依赖 NVIDIA SM100（Blackwell）或华为昇腾 950 硬件及完整模型权重。本书对 DeepInfer 本身的分析全部基于静态源码与官方 Q&A 交叉验证；书中所有实验曲线与数据图则由第二部分的 `minidi` 引擎在 CPU 上真实运行生成。
 
 ---

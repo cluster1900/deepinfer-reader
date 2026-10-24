@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CH = ROOT / "chapters"
 CH_EN = ROOT / "chapters_en"
 MIN_FIGURES = 28
-SHA = "8b16149741a4935e1dec8cea27853f273b374c5b"
+SHA = "9bd9cf243fc53ef9afbf8f04d391d989117d6ab9"
 SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)")
 
 errors = []
