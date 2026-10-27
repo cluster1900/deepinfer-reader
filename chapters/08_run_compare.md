@@ -62,6 +62,10 @@ DeepInfer 的核心特性大多通过 `deepinfer/environ.py` 中声明的环境�
 | **专家负载均衡** | `DEEPINFER_EXPERT_REARRANGEMENT_STEP_INTERVAL` | `0`（不重排） | 每隔多少步触发一次 EPLB 全局重算与跨卡专家权重热迁移 |
 | **确定性推理** | `DEEPINFER_BATCH_INVARIANT` | `False` | 开启批次无关的确定性矩阵乘与注意力归约（仅支持 NVIDIA） |
 
+> **布尔开关的取值规则（源码基线 `5537415`，上游 #218）**：表中默认值为 `False` 的开关都由 `EnvVar.bool()` 声明，经 `_bool()`（`environ.py` L14–L20）解析。该函数先把取值转成小写，只接受 `0`、`false`、空字符串（视为假）和 `1`、`true`（视为真）；`True`、`FALSE` 这类大小写变体也能识别。此前的版本只把 `"0"`、`""`、`"false"`、`"False"` 当作假，其余任何值（包括 `FALSE`、`no`、`off`）都会被当成真；现在 `yes`、`no`、`on`、`off`、`2` 等值会直接抛出 `ValueError`。
+>
+> ⚠️ **写错值会报错，而不是被静默当成“开”**：`EnvVar` 在第一次读取某个变量时才解析（之后缓存），所以错误在引擎启动、首次用到这个开关时出现，报错信息以变量名开头，例如 `DEEPINFER_ENFORCE_EAGER: expected one of '0', '1', 'false', 'true' (case-insensitive)`。旧脚本里若写过 `=yes` / `=on`，升级后请改成 `=1`。
+
 ---
 
 ## 8.3 怎么做到“逐 Token 完全可复现”？批不变推理与确定性采样
@@ -108,7 +112,7 @@ flowchart LR
 
 走完了第一部分的全部源码，我们现在可以站在架构师的视角，把 **DeepInfer** 与社区最主流的两个通用推理框架 **vLLM**、**SGLang** 做一个全方位对比（其中 DeepInfer 列全部经本书源码实证，vLLM 与 SGLang 列基于各自公开架构设计）：
 
-| 架构维度 | DeepInfer（commit `9bd9cf2`） | vLLM（V1 架构） | SGLang |
+| 架构维度 | DeepInfer（commit `5537415`） | vLLM（V1 架构） | SGLang |
 | --- | --- | --- | --- |
 | **核心设计目标** | **单模型极致特化**：专为 DeepSeek-V4.1-Flash 与大规模 Wide-EP 集群打造 | **高通用性生态底座**：支持上百种模型架构与广泛的硬件后端 | **通用高性能与复杂控制流**：兼顾多模型支持、Radix 缓存与结构化生成 |
 | **调度器实现语言** | **纯 C++（`csrc/engine/scheduler.hpp`）**，释放 GIL，微秒级完成块管理与抢占 | Python 为主（配合部分 C++/Cython 辅助结构） | Python 为主（运行于独立调度进程/线程） |

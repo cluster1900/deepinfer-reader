@@ -87,7 +87,7 @@ flowchart TB
 
 > 既然滑动窗口大小是 $W = 128$，投机解码草稿数是 $\text{nextn} = 5$（即一步 decode 最多送入 $k = 1 + 5 = 6$ 个 token），为什么**压缩状态 Ring** 的长度是 $\text{ratio} + 5$，而 **SWA Ring** 的长度却是 $128 + 6 = 134$？那个相差的 **`1`** 到底是从哪儿来的？
 
-我们先把源码里的两个公式摆出来（见 `deepinfer/environ.py` L132 与 `deepinfer/worker/cache_engine.py` L88–L133）：
+我们先把源码里的两个公式摆出来（见 `deepinfer/environ.py` L139 与 `deepinfer/worker/cache_engine.py` L88–L133）：
 
 1. 环境变量 `DEEPINFER_MAX_BACKTRACKING_TOKENS` 默认等于 `nextn + 1 = 6`（即单步 decode 送入模型的最大 token 数 $k = 1 + \text{nextn}$）。
 2. **压缩状态 Ring 大小**（`get_inference_compress_block_size`，`cache_engine.py` L131–L133 及 `compress.py` L98）：

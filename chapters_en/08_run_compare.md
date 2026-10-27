@@ -62,6 +62,10 @@ Most of DeepInfer's core features are controlled via environment variables decla
 | **Expert Load Balancing** | `DEEPINFER_EXPERT_REARRANGEMENT_STEP_INTERVAL` | `0` (disabled) | Step interval at which EPLB triggers global rebalancing and cross-GPU hot migration of expert weights |
 | **Deterministic Inference** | `DEEPINFER_BATCH_INVARIANT` | `False` | Enables batch-invariant deterministic matrix multiplication and attention reduction (NVIDIA only) |
 
+> **How boolean switches are parsed (source baseline `5537415`, upstream #218)**: every switch above whose default is `False` is declared with `EnvVar.bool()` and parsed by `_bool()` (`environ.py` L14–L20). The function lowercases the value and accepts only `0`, `false`, and the empty string (false) and `1`, `true` (true); case variants such as `True` or `FALSE` are recognized too. Previous versions treated only `"0"`, `""`, `"false"`, and `"False"` as false and everything else (including `FALSE`, `no`, `off`) as true; now values such as `yes`, `no`, `on`, `off`, or `2` raise a `ValueError`.
+>
+> ⚠️ **A wrong value now fails loudly instead of silently meaning "on"**: `EnvVar` resolves a variable on first access (and caches it afterwards), so the error appears when the engine starts up and first reads that switch, and the message is prefixed with the variable name, e.g. `DEEPINFER_ENFORCE_EAGER: expected one of '0', '1', 'false', 'true' (case-insensitive)`. If old scripts set `=yes` / `=on`, change them to `=1` after upgrading.
+
 ---
 
 ## 8.3 Achieving Token-by-Token Reproducibility: Batch-Invariant Inference and Deterministic Sampling
@@ -108,7 +112,7 @@ When reading or running `examples/benchmark.py` (and `examples/README.md`) to me
 
 Having walked through the entire codebase in Part I, we can now step back and compare **DeepInfer** against the community's two leading general-purpose inference frameworks—**vLLM** and **SGLang**—from an architect's perspective (all entries in the DeepInfer column are verified directly against the source code in this book; the vLLM and SGLang columns reflect their respective public architectures):
 
-| Architectural Dimension | DeepInfer (commit `9bd9cf2`) | vLLM (V1 Architecture) | SGLang |
+| Architectural Dimension | DeepInfer (commit `5537415`) | vLLM (V1 Architecture) | SGLang |
 | --- | --- | --- | --- |
 | **Core Design Goal** | **Extreme single-model specialization**: purpose-built for DeepSeek-V4.1-Flash and large-scale Wide-EP clusters | **Universal ecosystem foundation**: supports 100+ model architectures and a wide range of hardware backends | **General high performance & complex control flow**: balances multi-model support, Radix caching, and structured generation |
 | **Scheduler Implementation Language** | **Pure C++ (`csrc/engine/scheduler.hpp`)**, releasing the GIL for microsecond-level block management and preemption | Primarily Python (assisted by selected C++/Cython data structures) | Primarily Python (running in an isolated scheduler process/thread) |

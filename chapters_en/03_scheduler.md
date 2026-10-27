@@ -57,7 +57,7 @@ flowchart TB
   Check --> Vote2
 ```
 
-Tracing Figure 3-1 reveals how carefully this voting protocol is engineered (constants defined in `deepinfer/environ.py` L174–L177):
+Tracing Figure 3-1 reveals how carefully this voting protocol is engineered (constants defined in `deepinfer/environ.py` L181–L184):
 
 - **Why have both an `ALL` point at 70 steps and an `ANY` point at 100 steps?** Active decode requests are highly sensitive to time-between-tokens (TBT). Every 70 decode steps (`DEEPINFER_PREFILL_ATTEMPT_INTERVAL = 70`), if every DP rank has new requests waiting (unanimous `want`), the whole group switches over to run prefill together. If load is skewed and only a single rank has waiting requests—failing unanimity—then at step 100 (`DEEPINFER_PREFILL_ANY_ATTEMPT_INTERVAL = 100`), the `ANY` check forces a switch, and the remaining ranks execute a dummy empty prefill step to keep collective communications aligned.
 - **Why do Prefill steps run back-to-back once started?** Whenever a prefill step executes, `schedule()` (L676–L677) resets `decode_step` to 0. On the very next step, `decode_step == 0` immediately hits `0 % 70 == 0` (`ALL` point)! As long as the waiting queues are not yet drained and KV block usage remains below the 90% watermark (`GPU_CACHE_PREFILL_WATERMARK = 0.9f`), the engine chains consecutive prefill steps to drain the backlog in one go.

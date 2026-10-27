@@ -90,7 +90,7 @@ flowchart TB
 
 DeepInfer 仓库结构清晰，分为 **C++ 引擎核心（`csrc/`）**、**Python 运行时与模型层（`deepinfer/`）**、**硬件拓扑工具（`deep_cluster/`）** 和 **外部高性能算子库（`vendor/`）** 四大块：
 
-```{.mermaid caption="图 1-2　DeepInfer 仓库目录地图（commit 9bd9cf2）"}
+```{.mermaid caption="图 1-2　DeepInfer 仓库目录地图（commit 5537415）"}
 flowchart LR
   subgraph Core["1. 引擎与运行时骨架"]
     csrc["csrc/engine/（C++ 调度核心）<br/>scheduler · block_manager<br/>sequence · zos · mtp_varlen"]

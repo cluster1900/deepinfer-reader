@@ -2,7 +2,7 @@
 
 ## 1. Acknowledgments and Version Statement
 
-- **The DeepInfer Open-Source Project**: Open-sourced by the DeepSeek-AI team (repository: `https://github.com/deepseek-ai/DeepInfer`, licensed under Apache License 2.0). All source file paths, function names, line numbers, and default configurations in this book are strictly locked to and verified against commit **`9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`** (2026-10-21, `Bump DeepEP to f6aa38fe and drop the SSH->HTTPS rewrite (#157)`). Copyright of quoted source snippets and documentation excerpts belongs to their original authors and is used solely for technical analysis and educational purposes.
+- **The DeepInfer Open-Source Project**: Open-sourced by the DeepSeek-AI team (repository: `https://github.com/deepseek-ai/DeepInfer`, licensed under Apache License 2.0). All source file paths, function names, line numbers, and default configurations in this book are strictly locked to and verified against commit **`553741557a57df44a46fb3ab72b6aafeaf945337`** (2026-10-25, `fix: validate boolean environment variables with strict parsing (#218)`). Copyright of quoted source snippets and documentation excerpts belongs to their original authors and is used solely for technical analysis and educational purposes.
 - **Official Technical Q&A Document (Official Q&A)**: Refers to `doc/inference_deployment_qa.md` included in the repository (since `774ce24` it replaces the earlier PDF `doc/DeepSeek V4.1 Flash 推理部署 Q&A.pdf`). Wherever this book cites production deployment figures—such as online E/P/D disaggregation ratios, 3FS distributed KVCache storage, production throughput numbers, or empirical EPLB metrics—it explicitly labels them as "Official Q&A" to indicate their source.
 - **Open-Source Community Lineage**: DeepInfer's `README.md` acknowledges vLLM, SGLang, and TensorRT-LLM; the Official Q&A also notes that its zero-overhead asynchronous scheduling (ZOS) draws inspiration from SGLang and Nanoflow.
 - **Companion Code and Licensing**: The CPU pedagogical engine `minidi/` implemented in Part II of this book, along with all unit tests in `tests/`, plotting scripts in `scripts/`, and the build pipeline, are original works of this book open-sourced under the **MIT License**; the text and diagrams of the book are released under the **CC BY 4.0 License**.
@@ -11,7 +11,7 @@
 
 ## 2. Notes on Two "Comment vs. Implementation Discrepancies" in DeepInfer's Source Code
 
-During our line-by-line verification of commit `9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`, we found two places in the upstream codebase where a function comment contradicts or diverges from the actual executable logic. We record them here as a reference for readers browsing the upstream code (both the main text of this book and `minidi` strictly follow the **actual executable code**):
+During our line-by-line verification of commit `553741557a57df44a46fb3ab72b6aafeaf945337`, we found two places in the upstream codebase where a function comment contradicts or diverges from the actual executable logic. We record them here as a reference for readers browsing the upstream code (both the main text of this book and `minidi` strictly follow the **actual executable code**):
 
 1. **Preemption direction in `_schedule_decode` (`csrc/engine/scheduler.hpp` L556 vs. L625–L644)**:
    - *What the comment says*: The function header comment on lines 556–557 states that when blocks are insufficient, it preempts the sequence with the *shortest* output ("block 不足时抢占 output 最短的 seq").

@@ -57,7 +57,7 @@ flowchart TB
   Check --> Vote2
 ```
 
-对照图 3-1，你会发现这套投票机制设计得非常周密（常量定义在 `deepinfer/environ.py` L174–L177）：
+对照图 3-1，你会发现这套投票机制设计得非常周密（常量定义在 `deepinfer/environ.py` L181–L184）：
 
 - **为什么设 70 步的 `ALL` 点和 100 步的 `ANY` 点？** 正在 decode 的请求对步间延迟（TBT）极其敏感。平时每跑 70 步 decode（`DEEPINFER_PREFILL_ATTEMPT_INTERVAL = 70`），如果所有 DP 卡手头都有新请求等着（全员 `want`），大家就一起切过去做 prefill。万一负载不均，只有某一张卡来了新请求，凑不齐“全员想做”，那么到了第 100 步（`DEEPINFER_PREFILL_ANY_ATTEMPT_INTERVAL = 100`），`ANY` 点就会强制放行，让其他卡跑一个空 prefill 步陪它把通信对齐。
 - **为什么 Prefill 一旦开始就能连续做完？** 只要跑了一次 prefill 步，`schedule()`（L676–L677）就会把 `decode_step` 清零。下一步 `decode_step == 0` 恰好又命中 `0 % 70 == 0` 的 `ALL` 点！只要等待队列还没清空、KV 块使用率没超过 90% 水位线（`GPU_CACHE_PREFILL_WATERMARK = 0.9f`），引擎就会一鼓作气把积压的 prefill 连续跑完。
