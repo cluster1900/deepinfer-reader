@@ -87,7 +87,7 @@ Here lies a deeply illuminating question that puzzles almost everyone reading th
 
 > Given a sliding window size of $W = 128$ and $\text{nextn} = 5$ speculative draft tokens (meaning a single decode step feeds up to $k = 1 + 5 = 6$ tokens into the model), why does the **Compression State Ring** have length $\text{ratio} + 5$, whereas the **SWA Ring** has length $128 + 6 = 134$? Where does that extra **`1`** come from?
 
-Let us first lay out the two formulas from the source code (`deepinfer/environ.py` L132 and `deepinfer/worker/cache_engine.py` L88–L133):
+Let us first lay out the two formulas from the source code (`deepinfer/environ.py` L139 and `deepinfer/worker/cache_engine.py` L88–L133):
 
 1. The environment variable `DEEPINFER_MAX_BACKTRACKING_TOKENS` defaults to `nextn + 1 = 6` (the maximum number of tokens $k = 1 + \text{nextn}$ fed into the model in a single decode step).
 2. **Compression State Ring size** (`get_inference_compress_block_size`, `cache_engine.py` L131–L133 and `compress.py` L98):

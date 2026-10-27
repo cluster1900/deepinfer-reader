@@ -2,7 +2,7 @@
 
 对照 DeepInfer：
 - deepinfer/worker/cache_engine.py L88 get_inference_swa_block_size：ring 长度 = window_size + DEEPINFER_MAX_BACKTRACKING_TOKENS；
-- deepinfer/environ.py L132：MAX_BACKTRACKING_TOKENS 取 max(环境变量, nextn + 1)；
+- deepinfer/environ.py L139：MAX_BACKTRACKING_TOKENS 取 max(环境变量, nextn + 1)；
 - 官方 Q&A：V4.1 推理视角 ring = 窗口 128 + 最大回退 6 = 134。
 SWA KV 放在每个请求一个定长 slot 的 state cache 里（不走分页块），位置 p 写到 p % ring。
 

@@ -90,7 +90,7 @@ Understanding Figure 1-1 unlocks three architectural mysteries in the source cod
 
 DeepInfer's repository is cleanly organized into four major areas: the **C++ Engine Core (`csrc/`)**, the **Python Runtime & Model Layer (`deepinfer/`)**, **Hardware Topology Utilities (`deep_cluster/`)**, and **External High-Performance Kernel Libraries (`vendor/`)**:
 
-```{.mermaid caption="Figure 1-2  DeepInfer Repository Directory Map (commit 9bd9cf2)"}
+```{.mermaid caption="Figure 1-2  DeepInfer Repository Directory Map (commit 5537415)"}
 flowchart LR
   subgraph Core["1. Engine & Runtime Backbone"]
     csrc["csrc/engine/ (C++ Scheduling Core)<br/>scheduler · block_manager<br/>sequence · zos · mtp_varlen"]

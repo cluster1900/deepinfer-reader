@@ -50,7 +50,7 @@ To match natural human intuition when learning systems, every chapter in this bo
 
 ## 0.3 Version Baseline and Evidence Conventions
 
-All DeepInfer source code analyzed in this book is pinned to commit **`9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`** (2026-10-21, `Bump DeepEP to f6aa38fe and drop the SSH->HTTPS rewrite (#157)`) of the official repository `https://github.com/deepseek-ai/DeepInfer`. Every file path, function name, line number, and default value in this book has been verified line by line against this commit.
+All DeepInfer source code analyzed in this book is pinned to commit **`553741557a57df44a46fb3ab72b6aafeaf945337`** (2026-10-25, `fix: validate boolean environment variables with strict parsing (#218)`) of the official repository `https://github.com/deepseek-ai/DeepInfer`. Every file path, function name, line number, and default value in this book has been verified line by line against this commit.
 
 - **Line-number notation**: Citations like `scheduler.hpp L275` refer to line 275 of `csrc/engine/scheduler.hpp`; when directory prefixes are omitted, they follow the context of the current chapter.
 - **Official Q&A**: The repository includes `doc/inference_deployment_qa.md` (referred to throughout this book as the **"Official Q&A"**; upstream first shipped it as the PDF `doc/DeepSeek V4.1 Flash 推理部署 Q&A.pdf` in `8b16149`, then replaced it in `774ce24` with an English Markdown file and added `doc/images/architecture_overview.png` and `wide_ep_decode_pareto.png`), which discloses extensive production deployment details (such as E/P/D disaggregation ratios, 3FS distributed KV storage, and the rationale behind 128-token persistence granularity). All facts and figures cited from that document are explicitly labeled as "Official Q&A".
